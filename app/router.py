@@ -27,18 +27,34 @@ class ModelRouter:
             return False
         return (time.time() - failure.failed_at) < self.settings.provider_failure_cooldown_seconds
 
-    def candidates(self, *, provider: str | None, free_only: bool) -> list[ProviderConfig]:
+    def _model_allowed(self, candidate: ProviderConfig, model: str, free_only: bool) -> bool:
+        selected = candidate.default_model if model == "auto" else model
+        if candidate.allowed_models and selected not in candidate.allowed_models:
+            return False
+        if not free_only:
+            return True
+        if not candidate.free_eligible:
+            return False
+        if candidate.free_models:
+            return selected in candidate.free_models
+        # Without an explicit free-model allowlist, only the provider's configured
+        # default model may be used in free-only mode. This prevents a caller from
+        # switching a free-eligible provider to an arbitrary paid model.
+        return selected == candidate.default_model
+
+    def candidates(self, *, provider: str | None, free_only: bool, model: str = "auto") -> list[ProviderConfig]:
         candidates = [p for p in self.settings.providers if p.configured]
         if provider:
             candidates = [p for p in candidates if p.name == provider]
-        if free_only:
-            candidates = [p for p in candidates if p.free_eligible]
+        candidates = [p for p in candidates if self._model_allowed(p, model, free_only)]
         candidates.sort(key=lambda p: p.priority)
         active = [p for p in candidates if not self._in_cooldown(p.name)]
         return active or candidates
 
     async def route(self, payload: dict[str, Any], *, provider: str | None, free_only: bool, model: str) -> ProviderAttempt:
-        candidates = self.candidates(provider=provider, free_only=free_only)
+        if not free_only and not self.settings.allow_paid_routes:
+            raise RuntimeError("Paid routing is disabled by operator policy.")
+        candidates = self.candidates(provider=provider, free_only=free_only, model=model)
         if not candidates:
             mode = "free-eligible" if free_only else "configured"
             raise RuntimeError(f"No {mode} providers are available. Configure provider keys/models first.")
