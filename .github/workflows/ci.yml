@@ -24,5 +24,6 @@ jobs:
       - run: node --check static/workspace.js
       - run: node --check static/preview.js
       - run: node --check static/growth.js
+      - run: node --check static/integrations.js
       - run: node --check static/service-worker.js
       - run: docker build -t arjuna-ai-ci .
