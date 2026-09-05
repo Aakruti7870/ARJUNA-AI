@@ -13,7 +13,7 @@ def settings(providers):
                     platform_api_keys=("test",), providers=tuple(providers), session_secret="x"*40,
                     admin_email="admin@test", admin_password="secure-password-123", cookie_secure=False,
                     database_url="sqlite+pysqlite:///:memory:", api_key_hash_secret="y"*40,
-                    rate_limit_per_minute=60, login_rate_limit_per_minute=8, allow_paid_routes=True)
+                    rate_limit_per_minute=60, login_rate_limit_per_minute=8, allow_paid_routes=True, provider_vault_secret="z"*40)
 
 
 def test_free_only_filters_paid_provider():
