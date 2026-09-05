@@ -59,6 +59,7 @@ class Settings:
     rate_limit_per_minute: int
     login_rate_limit_per_minute: int
     allow_paid_routes: bool
+    provider_vault_secret: str
 
 
 def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -> ProviderConfig:
@@ -106,6 +107,7 @@ def get_settings() -> Settings:
         rate_limit_per_minute=max(1, _int("RATE_LIMIT_PER_MINUTE", 60)),
         login_rate_limit_per_minute=max(1, _int("LOGIN_RATE_LIMIT_PER_MINUTE", 8)),
         allow_paid_routes=_bool("ALLOW_PAID_ROUTES", False),
+        provider_vault_secret=os.getenv("PROVIDER_VAULT_SECRET", "dev-provider-vault-secret-change-me"),
     )
     if environment == "production":
         insecure = []
@@ -117,6 +119,8 @@ def get_settings() -> Settings:
             insecure.append("ADMIN_PASSWORD")
         if "dev-local-key" in settings.platform_api_keys:
             insecure.append("PLATFORM_API_KEYS")
+        if settings.provider_vault_secret.startswith("dev-") or len(settings.provider_vault_secret) < 32:
+            insecure.append("PROVIDER_VAULT_SECRET")
         if insecure:
             raise RuntimeError("Unsafe production configuration: " + ", ".join(insecure))
     return settings
