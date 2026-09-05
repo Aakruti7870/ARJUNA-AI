@@ -2,11 +2,11 @@ let integrationCatalogCache=[];
 const integrationEsc=(s)=>String(s??"").replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 
 function integrationTemplate(item){
-  if(item.id==='mcp_streamable_http') return {transport:'streamable_http',endpoint:'https://example.com/mcp',capabilities:['tools','resources','prompts'],approval:'required'};
-  if(item.id==='mcp_sse') return {transport:'sse',endpoint:'https://example.com/sse',capabilities:['tools','resources','prompts'],approval:'required'};
-  if(item.id==='mcp_stdio') return {transport:'stdio',command:'node',args:['server.js'],deployment:'local_or_worker_only',approval:'required'};
-  if(item.id==='plugin_openapi') return {manifest_type:'openapi',schema_url:'https://example.com/openapi.json',approval:'required'};
-  if(item.id==='plugin_custom') return {manifest_type:'arjuna_plugin',manifest_url:'https://example.com/arjuna-plugin.json',approval:'required'};
+  if(item.id==='mcp_streamable_http') return {transport:'streamable_http',servers:[{name:'primary',endpoint:'https://example.com/mcp'}],capabilities:['tools','resources','prompts'],approval:'required'};
+  if(item.id==='mcp_sse') return {transport:'sse',servers:[{name:'legacy',endpoint:'https://example.com/sse'}],capabilities:['tools','resources','prompts'],approval:'required'};
+  if(item.id==='mcp_stdio') return {transport:'stdio',servers:[{name:'local-worker',command:'node',args:['server.js']}],deployment:'local_or_worker_only',approval:'required'};
+  if(item.id==='plugin_openapi') return {manifest_type:'openapi',plugins:[{name:'primary',schema_url:'https://example.com/openapi.json'}],approval:'required'};
+  if(item.id==='plugin_custom') return {manifest_type:'arjuna_plugin',plugins:[{name:'primary',manifest_url:'https://example.com/arjuna-plugin.json'}],approval:'required'};
   if(item.id==='rest_api') return {base_url:'https://api.example.com',auth_type:'bearer',approval:'required'};
   if(item.id==='webhook') return {endpoint:'https://example.com/webhook',direction:'outbound',approval:'required'};
   return {};
@@ -19,6 +19,7 @@ async function loadIntegrations(){
   try{
     const d=await api('/api/growth/catalog');
     integrationCatalogCache=d.platforms||[];
+    if(typeof growthCatalogCache!=='undefined') growthCatalogCache=integrationCatalogCache;
     renderIntegrationFilters();
     renderIntegrations();
     updateIntegrationStats();
