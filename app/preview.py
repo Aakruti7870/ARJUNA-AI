@@ -32,7 +32,7 @@ def _detect_kind(content: str, hint: str = "auto") -> str:
 
     if re.search(r"<!doctype\s+html|<html\b|<body\b|<(?:div|section|main|article|header|footer|form|button|input|style)\b", stripped, re.I):
         return "html"
-    if re.search(r"(?m)^(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+)|\[[^\]]+\]\([^\)]+\)|\*\*[^*]+\*\*", stripped):
+    if re.search(r"^(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+)|\[[^\]]+\]\([^\)]+\)|\*\*[^*]+\*\*", stripped, re.M):
         return "markdown"
     return "text"
 
@@ -72,7 +72,7 @@ def analyze_preview(content: str, hint: str = "auto") -> dict[str, Any]:
         "lines": lines,
         "words": words,
         "characters": chars,
-        "headings": _count(r"<h[1-6]\b|(?m)^#{1,6}\s+", text),
+        "headings": _count(r"<h[1-6]\b|^#{1,6}\s+", text, re.I | re.M),
         "links": _count(r"<a\b|\[[^\]]+\]\([^\)]+\)", text),
         "images": _count(r"<img\b|!\[[^\]]*\]\([^\)]+\)", text),
         "forms": _count(r"<form\b", text),
