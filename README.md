@@ -1,44 +1,32 @@
 # ARJUNA AI
 
-ARJUNA AI is a standalone self-hosted AI gateway and playground that sits in front of multiple OpenAI-compatible model APIs and gives you:
+ARJUNA AI is a standalone AI command centre and OpenAI-compatible gateway. It is intentionally independent from every other project, domain, database and deployment.
 
-- one `/v1/chat/completions` endpoint for your own apps;
-- server-side API-key storage;
-- free-first routing and provider fallback;
-- provider/model registry;
-- playground UI with response preview, latency and usage;
-- provider cooldown after failures;
-- Docker + Google Cloud Run starter deployment;
-- no Replit dependency.
+## Launch portal v0.2
 
-## Important limitation
+The web portal now includes:
 
-"Open" does not mean "free". `*_FREE_ELIGIBLE=true` is an operator-controlled policy flag. Only mark a provider free-eligible when your current account/key has free quota or you are self-hosting its compute. Provider terms and quotas can change.
+- secure administrator console login with signed HttpOnly session cookies and CSRF protection;
+- responsive dashboard and installable PWA shell;
+- multi-provider playground with free-first routing and automatic fallback;
+- NVIDIA, Gemini, Groq, OpenRouter and OpenAI-compatible provider adapters;
+- generated ARJUNA API keys stored as keyed hashes and shown only once;
+- `/v1/chat/completions` and `/v1/models` OpenAI-style endpoints;
+- per-key in-process rate limiting;
+- usage metadata dashboard (provider, model, tokens, latency, status — prompts/responses are not persisted);
+- SQLite for local development and PostgreSQL-compatible `DATABASE_URL` for persistent production data;
+- security headers, production secret validation, Docker, Cloud Run deployment starter and GitHub Actions CI;
+- starter Terms and Privacy pages that must be replaced/reviewed for the final legal entity and launch jurisdiction.
 
-## Architecture
+## Critical assumption
 
-```text
-Browser / Your Apps
-        |
-        v
-ARJUNA AI
-  |           |
-  |           +--> Playground / Preview
-  v
-Free-first Model Router
-  |
-  +--> NVIDIA-compatible API
-  +--> Gemini OpenAI-compatible API
-  +--> Groq OpenAI-compatible API
-  +--> OpenRouter (optional)
-  +--> OpenAI (optional)
-```
+Open-source or open-weight models are not automatically free to run. `*_FREE_ELIGIBLE=true` is an operator policy switch. Set it only when the connected account currently has free quota or the compute is self-hosted.
 
-## Run locally
+## Local run
 
 ```bash
 cp .env.example .env
-# Add API keys and model names to .env
+# Set ADMIN_EMAIL, ADMIN_PASSWORD, SESSION_SECRET, API_KEY_HASH_SECRET and at least one provider key/model.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -47,37 +35,35 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
 Open `http://localhost:8080`.
 
-The development platform key in the UI defaults to `dev-local-key`. Change `PLATFORM_API_KEYS` before any shared or production deployment.
+## Production minimum
 
-## Provider setup
+Before public launch:
 
-Every provider requires four things:
+1. Set `ENVIRONMENT=production`.
+2. Put all secrets in a dedicated secret manager; never commit `.env`.
+3. Use a persistent PostgreSQL `DATABASE_URL`; Cloud Run local disk is not durable.
+4. Set a production domain and `PUBLIC_ORIGIN`.
+5. Keep `COOKIE_SECURE=true` behind HTTPS.
+6. Configure provider quotas/spend controls and verify each provider's current terms.
+7. Replace the starter Privacy/Terms text with reviewed legal documents and a real contact address.
+8. Add managed/WAF-level rate limiting if exposing the API at scale; the built-in limiter is per process.
+9. Add centralized logs/metrics and alerting.
+10. Run provider integration tests using dedicated low-quota test keys before enabling paid fallback.
 
-```text
-API_KEY
-MODEL
-BASE_URL
-FREE_ELIGIBLE
-```
-
-Examples are in `.env.example`.
-
-The gateway intentionally does **not** hard-code model names. Model availability changes faster than the gateway architecture, so you choose a current model from your provider account.
-
-## Call your own API
+## API example
 
 ```bash
-curl http://localhost:8080/v1/chat/completions \
-  -H 'Authorization: Bearer YOUR_PLATFORM_KEY' \
+curl https://YOUR-ARJUNA-DOMAIN/v1/chat/completions \
+  -H 'Authorization: Bearer arjuna_live_...' \
   -H 'Content-Type: application/json' \
   -d '{
-    "model":"auto",
-    "free_only":true,
-    "messages":[{"role":"user","content":"Explain this API design."}]
+    "model": "auto",
+    "free_only": true,
+    "messages": [{"role":"user","content":"Hello from ARJUNA AI"}]
   }'
 ```
 
-The response is passed through in OpenAI Chat Completions format. The selected route is returned in headers:
+Selected route is returned in:
 
 ```text
 X-Arjuna-Provider
@@ -85,39 +71,6 @@ X-Arjuna-Model
 X-Arjuna-Latency-Ms
 ```
 
-## Production hardening before public launch
+## Next launch milestone
 
-This is an MVP scaffold, not a finished public SaaS. Before public users are allowed, add:
-
-1. Secret Manager instead of plain environment files.
-2. User accounts and per-user generated API keys stored as hashes.
-3. Persistent quota/usage database (PostgreSQL/Redis).
-4. Distributed rate limiting.
-5. Billing/spend caps and per-provider quota polling where supported.
-6. Audit logs without prompt/secret leakage.
-7. Streaming and tool-calling compatibility tests per provider.
-8. Abuse controls and content/safety policies appropriate to your service.
-9. Private Cloud Run ingress or a proper auth layer for the admin UI.
-10. Sandbox execution if you later add code/app preview generation.
-
-## Next build phases
-
-### Phase 2 — Secure ARJUNA AI Console
-- login and admin RBAC;
-- secure provider key management through Google Secret Manager;
-- model discovery and health checks;
-- usage dashboard and daily limits;
-- API-key issuance for your applications.
-
-### Phase 3 — Preview workspace
-- temporary Git workspaces;
-- isolated container builds;
-- web/app preview URLs;
-- approve/reject flow;
-- PR creation only after approval.
-
-### Phase 4 — Agents
-- coding, testing, security, UI and deployment agents;
-- GitHub/MCP/tool gateway;
-- explicit production-write approvals;
-- model selection per agent.
+The next production milestone is infrastructure completion: dedicated ARJUNA domain, PostgreSQL instance, secret manager, provider credentials, centralized monitoring, distributed rate limiting and deployment verification. None of those resources should be shared with an unrelated project.
