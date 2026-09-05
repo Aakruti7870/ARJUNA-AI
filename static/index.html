@@ -39,6 +39,7 @@
       <nav id="nav">
         <button data-page="dashboard" class="nav-item active">Dashboard</button>
         <button data-page="playground" class="nav-item">Playground</button>
+        <button data-page="preview" class="nav-item">Preview Lab</button>
         <button data-page="providers" class="nav-item">Providers</button>
         <button data-page="keys" class="nav-item">API Keys</button>
         <button data-page="usage" class="nav-item">Usage</button>
@@ -85,7 +86,42 @@ Content-Type: application/json</pre></article>
             <div class="field-row"><label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.1" value="0.2" /></label><label>Max tokens<input id="maxTokens" type="number" min="1" value="4096" /></label></div>
             <button id="runBtn" class="primary wide">Run prompt</button>
           </article>
-          <article class="panel output-panel"><div class="panel-head"><div><p class="kicker">LIVE OUTPUT</p><h3>Response</h3></div><button id="copyOutput" class="secondary">Copy</button></div><div id="runMeta" class="meta-line">No run yet</div><pre id="output" class="response-box">Response will appear here.</pre></article>
+          <article class="panel output-panel"><div class="panel-head"><div><p class="kicker">LIVE OUTPUT</p><h3>Response</h3></div><div class="section-actions"><button id="previewOutputBtn" class="secondary">Preview</button><button id="copyOutput" class="secondary">Copy</button></div></div><div id="runMeta" class="meta-line">No run yet</div><pre id="output" class="response-box">Response will appear here.</pre></article>
+        </div>
+      </section>
+
+      <section id="page-preview" class="page">
+        <div class="section-head">
+          <div><p class="kicker">ISOLATED RENDERING</p><h2>Preview Lab</h2><p class="muted">Provider-independent analysis, safe rendering, responsive simulation, diffs and local snapshots. Preview content is not executed or stored by the server.</p></div>
+          <div class="section-actions"><button id="previewUseOutput" class="secondary">Use last AI output</button><button id="previewSaveSnapshot" class="primary">Save local snapshot</button></div>
+        </div>
+        <div class="preview-lab-grid">
+          <article class="panel preview-editor-panel">
+            <div class="panel-head"><div><p class="kicker">PREVIEW INPUT</p><h3>Independent workspace</h3></div><span class="status-pill ok">Safe isolation on</span></div>
+            <div class="field-row preview-controls"><label>Content type<select id="previewHint"><option value="auto">Auto detect</option><option value="html">HTML</option><option value="markdown">Markdown</option><option value="json">JSON</option><option value="text">Text</option></select></label><label>Rendering policy<select id="previewPolicy"><option value="safe">Safe · strip active content</option><option value="source">Source only</option></select></label></div>
+            <label class="preview-input-label">Content<textarea id="previewInput" rows="20" placeholder="Paste AI output, HTML, Markdown, JSON or text here…"></textarea></label>
+            <div class="preview-action-row"><button id="previewAnalyze" class="primary">Analyze & render</button><button id="previewSetBaseline" class="secondary">Set baseline</button><button id="previewClear" class="ghost">Clear</button></div>
+            <div id="previewMetrics" class="preview-metrics">
+              <div><span>Type</span><strong id="previewKind">—</strong></div><div><span>Risk</span><strong id="previewRisk">—</strong></div><div><span>Completeness</span><strong id="previewCompleteness">—</strong></div><div><span>Fingerprint</span><strong id="previewFingerprint">—</strong></div>
+            </div>
+            <div class="preview-intel"><p class="kicker">PREVIEW INTELLIGENCE</p><div id="previewInsights" class="insight-list"><span class="muted">Run analysis to inspect structure and risk.</span></div></div>
+          </article>
+
+          <article class="panel preview-stage-panel">
+            <div class="preview-stage-head">
+              <div class="preview-tabs"><button class="preview-tab active" data-preview-tab="render">Render</button><button class="preview-tab" data-preview-tab="source">Source</button><button class="preview-tab" data-preview-tab="compare">Compare</button></div>
+              <div class="device-switcher"><button class="device-btn active" data-device="desktop">Desktop</button><button class="device-btn" data-device="tablet">Tablet</button><button class="device-btn" data-device="mobile">Mobile</button></div>
+            </div>
+            <div id="previewViewport" class="preview-viewport desktop">
+              <iframe id="previewFrame" class="preview-frame" sandbox="" referrerpolicy="no-referrer" title="ARJUNA isolated preview"></iframe>
+              <pre id="previewSource" class="preview-source hidden">No preview yet.</pre>
+              <div id="previewCompare" class="preview-compare hidden"><div class="empty-state">Set a baseline, then analyze a changed version to compare.</div></div>
+            </div>
+            <div class="preview-lower-grid">
+              <div><p class="kicker">RISK SCAN</p><div id="previewRisks" class="risk-list"><span class="muted">No scan yet.</span></div></div>
+              <div><div class="panel-head compact"><p class="kicker">LOCAL SNAPSHOTS</p><button id="previewClearSnapshots" class="text-btn">Clear</button></div><div id="previewSnapshots" class="snapshot-list"><span class="muted">No snapshots saved.</span></div></div>
+            </div>
+          </article>
         </div>
       </section>
 
