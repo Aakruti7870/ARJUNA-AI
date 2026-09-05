@@ -7,14 +7,15 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
+from .preview import analyze_preview
 from .router import ModelRouter
-from .schemas import ApiKeyCreateRequest, ChatRequest, LoginRequest, PlaygroundRequest, ProviderUpsertRequest
+from .schemas import ApiKeyCreateRequest, ChatRequest, LoginRequest, PlaygroundRequest, PreviewAnalyzeRequest, ProviderUpsertRequest
 from .security import SessionData, SessionManager, SlidingWindowLimiter, constant_time_equal
 from .storage import Storage
 
@@ -25,7 +26,7 @@ sessions = SessionManager(settings.session_secret)
 api_limiter = SlidingWindowLimiter(settings.rate_limit_per_minute)
 login_limiter = SlidingWindowLimiter(settings.login_rate_limit_per_minute)
 
-app = FastAPI(title=settings.app_name, version="0.2.0", docs_url=None if settings.environment == "production" else "/api/docs", redoc_url=None)
+app = FastAPI(title=settings.app_name, version="0.3.0", docs_url=None if settings.environment == "production" else "/api/docs", redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.public_origin],
@@ -49,7 +50,8 @@ async def security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        "img-src 'self' data:; connect-src 'self'; frame-src 'self' data: blob:; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     )
     if settings.environment == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -133,7 +135,7 @@ async def service_worker():
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "service": settings.app_name, "version": "0.2.0", "environment": settings.environment}
+    return {"ok": True, "service": settings.app_name, "version": "0.3.0", "environment": settings.environment}
 
 
 @app.get("/api/auth/status")
@@ -235,6 +237,12 @@ async def revoke_key(key_id: str, _: SessionData = Depends(_csrf)):
 @app.get("/api/usage")
 async def usage(limit: int = 100, _: SessionData = Depends(_session)):
     return {"events": storage.recent_usage(max(1, min(limit, 500)))}
+
+
+@app.post("/api/preview/analyze")
+async def preview_analyze(req: PreviewAnalyzeRequest, _: SessionData = Depends(_csrf)):
+    result = analyze_preview(req.content, req.hint)
+    return JSONResponse(content=result, headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/playground")
