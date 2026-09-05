@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import re
 import time
 import uuid
 from pathlib import Path
@@ -13,18 +14,18 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .router import ModelRouter
-from .schemas import ApiKeyCreateRequest, ChatRequest, LoginRequest, PlaygroundRequest
+from .schemas import ApiKeyCreateRequest, ChatRequest, LoginRequest, PlaygroundRequest, ProviderUpsertRequest
 from .security import SessionData, SessionManager, SlidingWindowLimiter, constant_time_equal
 from .storage import Storage
 
 settings = get_settings()
-router = ModelRouter(settings)
-storage = Storage(settings.database_url, settings.api_key_hash_secret)
+storage = Storage(settings.database_url, settings.api_key_hash_secret, settings.provider_vault_secret)
+router = ModelRouter(settings, provider_loader=lambda: storage.effective_providers(settings.providers))
 sessions = SessionManager(settings.session_secret)
 api_limiter = SlidingWindowLimiter(settings.rate_limit_per_minute)
 login_limiter = SlidingWindowLimiter(settings.login_rate_limit_per_minute)
 
-app = FastAPI(title=settings.app_name, version="0.2.0", docs_url="/api/docs", redoc_url=None)
+app = FastAPI(title=settings.app_name, version="0.2.0", docs_url=None if settings.environment == "production" else "/api/docs", redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.public_origin],
@@ -176,7 +177,41 @@ async def dashboard(_: SessionData = Depends(_session)):
 
 @app.get("/api/providers")
 async def providers(_: SessionData = Depends(_session)):
-    return {"providers": router.public_status()}
+    override_names = storage.provider_override_names()
+    base_names = {p.name for p in settings.providers}
+    output = router.public_status()
+    for item in output:
+        if item["name"] in override_names:
+            item["source"] = "vault" if item["name"] in base_names else "custom"
+        else:
+            item["source"] = "environment"
+    return {"providers": output, "paidRoutesAllowed": settings.allow_paid_routes}
+
+
+@app.post("/api/providers/{provider_name}")
+async def upsert_provider(provider_name: str, req: ProviderUpsertRequest, _: SessionData = Depends(_csrf)):
+    name = provider_name.strip().lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,49}", name):
+        raise HTTPException(status_code=400, detail="Provider name must use lowercase letters, numbers, _ or -")
+    if not (req.base_url.startswith("https://") or (settings.environment != "production" and req.base_url.startswith("http://"))):
+        raise HTTPException(status_code=400, detail="Provider base URL must use HTTPS")
+    storage.upsert_provider(
+        name=name, base_url=req.base_url, api_key=req.api_key, default_model=req.default_model,
+        priority=req.priority, free_eligible=req.free_eligible, enabled=req.enabled,
+        allowed_models=req.allowed_models, free_models=req.free_models,
+    )
+    await router.clear_failure(name)
+    current = next((p for p in router.public_status() if p["name"] == name), None)
+    return {"ok": True, "provider": current}
+
+
+@app.delete("/api/providers/{provider_name}")
+async def delete_provider(provider_name: str, _: SessionData = Depends(_csrf)):
+    name = provider_name.strip().lower()
+    if not storage.delete_provider_override(name):
+        raise HTTPException(status_code=404, detail="Provider vault override not found")
+    await router.clear_failure(name)
+    return {"ok": True}
 
 
 @app.get("/api/keys")
@@ -228,7 +263,7 @@ async def playground(req: PlaygroundRequest, _: SessionData = Depends(_session))
 @app.get("/v1/models")
 async def models(_: dict = Depends(_bearer_identity)):
     data = []
-    for p in settings.providers:
+    for p in storage.effective_providers(settings.providers):
         if p.configured:
             data.append({"id": p.default_model, "object": "model", "owned_by": p.name})
     return {"object": "list", "data": data}
