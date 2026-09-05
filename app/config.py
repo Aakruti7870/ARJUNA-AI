@@ -33,6 +33,8 @@ class ProviderConfig:
     priority: int
     free_eligible: bool
     enabled: bool
+    allowed_models: tuple[str, ...]
+    free_models: tuple[str, ...]
 
     @property
     def configured(self) -> bool:
@@ -56,6 +58,7 @@ class Settings:
     api_key_hash_secret: str
     rate_limit_per_minute: int
     login_rate_limit_per_minute: int
+    allow_paid_routes: bool
 
 
 def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -> ProviderConfig:
@@ -67,6 +70,8 @@ def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -
         priority=_int(f"{prefix}_PRIORITY", priority),
         free_eligible=_bool(f"{prefix}_FREE_ELIGIBLE", False),
         enabled=_bool(f"{prefix}_ENABLED", True),
+        allowed_models=_parse_keys(os.getenv(f"{prefix}_ALLOWED_MODELS", "")),
+        free_models=_parse_keys(os.getenv(f"{prefix}_FREE_MODELS", "")),
     )
 
 
@@ -100,6 +105,7 @@ def get_settings() -> Settings:
         api_key_hash_secret=os.getenv("API_KEY_HASH_SECRET", "dev-key-hash-secret-change-me"),
         rate_limit_per_minute=max(1, _int("RATE_LIMIT_PER_MINUTE", 60)),
         login_rate_limit_per_minute=max(1, _int("LOGIN_RATE_LIMIT_PER_MINUTE", 8)),
+        allow_paid_routes=_bool("ALLOW_PAID_ROUTES", False),
     )
     if environment == "production":
         insecure = []
