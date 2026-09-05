@@ -38,3 +38,14 @@ class LoginRequest(BaseModel):
 
 class ApiKeyCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+
+
+class ProviderUpsertRequest(BaseModel):
+    base_url: str = Field(min_length=8, max_length=1000)
+    api_key: str | None = Field(default=None, max_length=10000)
+    default_model: str = Field(min_length=1, max_length=300)
+    priority: int = Field(default=100, ge=0, le=10000)
+    free_eligible: bool = True
+    enabled: bool = True
+    allowed_models: list[str] = Field(default_factory=list, max_length=100)
+    free_models: list[str] = Field(default_factory=list, max_length=100)
