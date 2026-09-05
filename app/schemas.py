@@ -31,6 +31,11 @@ class PlaygroundRequest(BaseModel):
     max_tokens: int | None = Field(default=4096, gt=0, le=131072)
 
 
+class PreviewAnalyzeRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=300000)
+    hint: Literal["auto", "html", "markdown", "json", "text"] = "auto"
+
+
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=512)
