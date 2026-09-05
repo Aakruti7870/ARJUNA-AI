@@ -21,5 +21,14 @@ jobs:
       - run: python -m compileall app
       - run: python -m pytest -q
       - run: node --check static/app.js
+      - run: node --check static/workspace.js
+      - run: node --check static/preview.js
+      - run: node --check static/growth.js
       - run: node --check static/service-worker.js
+      - name: Reject inline scripts in portal
+        run: |
+          if grep -n '<script>' static/index.html; then
+            echo 'Inline scripts are blocked by the production CSP.'
+            exit 1
+          fi
       - run: docker build -t arjuna-ai-ci .
