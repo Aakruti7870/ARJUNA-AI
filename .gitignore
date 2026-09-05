@@ -1,20 +1,11 @@
-# Python
+.env
+.venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.venv/
-venv/
-
-# Secrets
-.env
-.env.*
-!.env.example
-
-# IDE / OS
+.ruff_cache/
 .DS_Store
-.vscode/
-.idea/
-
-# Build
-dist/
-build/
+data/*.db
+data/*.db-*
+coverage.xml
+htmlcov/

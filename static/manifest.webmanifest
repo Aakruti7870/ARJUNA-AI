@@ -1,0 +1,10 @@
+{
+  "name": "ARJUNA AI Command Centre",
+  "short_name": "ARJUNA AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0d10",
+  "theme_color": "#101114",
+  "description": "Independent multi-provider AI command centre and API gateway.",
+  "icons": [{"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

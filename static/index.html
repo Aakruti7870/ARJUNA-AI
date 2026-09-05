@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#101114" />
+  <meta name="description" content="ARJUNA AI — independent multi-provider AI command centre and OpenAI-compatible gateway." />
+  <title>ARJUNA AI</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/static/icon.svg" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="loginView" class="login-shell hidden">
+    <section class="login-brand">
+      <div class="brand-mark large">A</div>
+      <p class="kicker">INDEPENDENT AI INFRASTRUCTURE</p>
+      <h1>ARJUNA <span>AI</span></h1>
+      <p class="lead">One command centre for multiple model providers, free-first routing, API access and usage control.</p>
+      <div class="feature-row"><span>Multi-provider</span><span>Free-first</span><span>OpenAI-compatible</span></div>
+    </section>
+    <section class="login-card glass">
+      <p class="kicker">SECURE CONSOLE</p>
+      <h2>Sign in</h2>
+      <p class="muted">Administrator access to your ARJUNA AI control plane.</p>
+      <form id="loginForm">
+        <label>Email<input id="loginEmail" type="email" autocomplete="username" required /></label>
+        <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+        <button class="primary wide" type="submit">Enter command centre</button>
+        <div id="loginError" class="error-text"></div>
+      </form>
+      <div class="legal-small">By signing in you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</div>
+    </section>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">A</div><div><strong>ARJUNA AI</strong><small>Command Centre</small></div></div>
+      <nav id="nav">
+        <button data-page="dashboard" class="nav-item active">Dashboard</button>
+        <button data-page="playground" class="nav-item">Playground</button>
+        <button data-page="providers" class="nav-item">Providers</button>
+        <button data-page="keys" class="nav-item">API Keys</button>
+        <button data-page="usage" class="nav-item">Usage</button>
+        <button data-page="settings" class="nav-item">Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="userEmail" class="user-email"></span>
+        <button id="logoutBtn" class="ghost wide">Sign out</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div><p id="pageKicker" class="kicker">COMMAND CENTRE</p><h1 id="pageTitle">Dashboard</h1></div>
+        <div class="top-actions"><span id="health" class="status-pill">Checking</span><button id="themeBtn" class="icon-btn" title="Toggle theme">◐</button><button id="menuBtn" class="icon-btn mobile-only">☰</button></div>
+      </header>
+
+      <section id="page-dashboard" class="page active">
+        <div class="hero-card">
+          <div><p class="kicker">ARJUNA ROUTER</p><h2>AI infrastructure under your control.</h2><p class="muted">Route requests across configured model providers without exposing provider secrets to clients.</p></div>
+          <div class="hero-orb">A</div>
+        </div>
+        <div class="stats-grid">
+          <article class="stat-card"><span>Providers ready</span><strong id="statProviders">—</strong><small>available now</small></article>
+          <article class="stat-card"><span>Active API keys</span><strong id="statKeys">—</strong><small>issued by you</small></article>
+          <article class="stat-card"><span>Requests · 24h</span><strong id="statRequests">—</strong><small>gateway traffic</small></article>
+          <article class="stat-card"><span>Tokens · 24h</span><strong id="statTokens">—</strong><small>reported by providers</small></article>
+        </div>
+        <div class="two-col">
+          <article class="panel"><div class="panel-head"><div><p class="kicker">QUICK START</p><h3>Use your gateway</h3></div><button data-goto="keys" class="secondary">Create key</button></div><pre class="code-block">POST /v1/chat/completions
+Authorization: Bearer arjuna_live_...
+Content-Type: application/json</pre></article>
+          <article class="panel"><p class="kicker">ROUTING POLICY</p><h3>Free-first by design</h3><p class="muted">ARJUNA only treats a provider as free when you explicitly mark it free-eligible. Open models can still have paid hosting.</p><button data-goto="providers" class="text-btn">View provider registry →</button></article>
+        </div>
+      </section>
+
+      <section id="page-playground" class="page">
+        <div class="playground-grid">
+          <article class="panel controls-panel">
+            <div class="panel-head"><div><p class="kicker">PROMPT LAB</p><h3>Playground</h3></div><label class="switch-label"><input id="freeOnly" type="checkbox" checked /><span>Free only</span></label></div>
+            <div class="field-row"><label>Provider<select id="provider"><option value="">Auto route</option></select></label><label>Model<input id="model" value="auto" /></label></div>
+            <label>System prompt<textarea id="systemPrompt" rows="4">You are a precise, helpful AI assistant.</textarea></label>
+            <label>Prompt<textarea id="prompt" rows="10" placeholder="Ask ARJUNA AI…"></textarea></label>
+            <div class="field-row"><label>Temperature<input id="temperature" type="number" min="0" max="2" step="0.1" value="0.2" /></label><label>Max tokens<input id="maxTokens" type="number" min="1" value="4096" /></label></div>
+            <button id="runBtn" class="primary wide">Run prompt</button>
+          </article>
+          <article class="panel output-panel"><div class="panel-head"><div><p class="kicker">LIVE OUTPUT</p><h3>Response</h3></div><button id="copyOutput" class="secondary">Copy</button></div><div id="runMeta" class="meta-line">No run yet</div><pre id="output" class="response-box">Response will appear here.</pre></article>
+        </div>
+      </section>
+
+      <section id="page-providers" class="page"><div class="section-head"><div><p class="kicker">MODEL ROUTER</p><h2>Provider Registry</h2><p class="muted">Server-side provider configuration and live fallback state.</p></div><button id="refreshProviders" class="secondary">Refresh</button></div><div id="providersList" class="card-grid"></div></section>
+
+      <section id="page-keys" class="page"><div class="section-head"><div><p class="kicker">ACCESS CONTROL</p><h2>API Keys</h2><p class="muted">Issue independent ARJUNA keys to apps and services. Secrets are shown once.</p></div><button id="createKeyBtn" class="primary">Create API key</button></div><div id="keySecretBox" class="secret-box hidden"><div><strong>New secret — copy it now</strong><code id="newKeySecret"></code></div><button id="copyKeySecret" class="secondary">Copy</button></div><div class="panel table-wrap"><table><thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keysBody"></tbody></table></div></section>
+
+      <section id="page-usage" class="page"><div class="section-head"><div><p class="kicker">OBSERVABILITY</p><h2>Usage</h2><p class="muted">Request metadata only. Prompts and responses are not stored.</p></div><button id="refreshUsage" class="secondary">Refresh</button></div><div class="panel table-wrap"><table><thead><tr><th>Time</th><th>Provider</th><th>Model</th><th>Tokens</th><th>Latency</th><th>Status</th></tr></thead><tbody id="usageBody"></tbody></table></div></section>
+
+      <section id="page-settings" class="page"><div class="settings-grid"><article class="panel"><p class="kicker">API ENDPOINT</p><h3>OpenAI-compatible base</h3><code id="apiBase" class="copy-line"></code><p class="muted small">Use <strong>/v1/chat/completions</strong> and <strong>/v1/models</strong>.</p></article><article class="panel"><p class="kicker">INSTALL</p><h3>Install ARJUNA AI</h3><p class="muted">This portal is PWA-ready and can be installed from a supported browser.</p><button id="installBtn" class="secondary" disabled>Install app</button></article><article class="panel"><p class="kicker">SECURITY</p><h3>Secrets stay server-side</h3><p class="muted">Provider keys belong in environment secrets or a secret manager. Never place them in browser JavaScript.</p></article><article class="panel"><p class="kicker">PROJECT BOUNDARY</p><h3>Standalone platform</h3><p class="muted">ARJUNA AI is an independent project with its own infrastructure, domain, data and release lifecycle.</p></article></div></section>
+
+      <footer class="footer">ARJUNA AI · Independent AI Command Centre · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer>
+    </main>
+  </div>
+
+  <dialog id="keyDialog"><form method="dialog" id="keyForm"><p class="kicker">NEW CREDENTIAL</p><h3>Create API key</h3><label>Key name<input id="keyName" placeholder="Production app" required minlength="2" /></label><div class="dialog-actions"><button value="cancel" class="ghost">Cancel</button><button id="confirmCreateKey" value="default" class="primary">Create key</button></div></form></dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
