@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Iterable
 
 from dotenv import load_dotenv
@@ -32,6 +33,8 @@ class ProviderConfig:
     priority: int
     free_eligible: bool
     enabled: bool
+    allowed_models: tuple[str, ...]
+    free_models: tuple[str, ...]
 
     @property
     def configured(self) -> bool:
@@ -41,11 +44,22 @@ class ProviderConfig:
 @dataclass(frozen=True)
 class Settings:
     app_name: str
+    environment: str
     public_origin: str
     request_timeout_seconds: int
     provider_failure_cooldown_seconds: int
     platform_api_keys: tuple[str, ...]
     providers: tuple[ProviderConfig, ...]
+    session_secret: str
+    admin_email: str
+    admin_password: str
+    cookie_secure: bool
+    database_url: str
+    api_key_hash_secret: str
+    rate_limit_per_minute: int
+    login_rate_limit_per_minute: int
+    allow_paid_routes: bool
+    provider_vault_secret: str
 
 
 def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -> ProviderConfig:
@@ -57,6 +71,8 @@ def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -
         priority=_int(f"{prefix}_PRIORITY", priority),
         free_eligible=_bool(f"{prefix}_FREE_ELIGIBLE", False),
         enabled=_bool(f"{prefix}_ENABLED", True),
+        allowed_models=_parse_keys(os.getenv(f"{prefix}_ALLOWED_MODELS", "")),
+        free_models=_parse_keys(os.getenv(f"{prefix}_FREE_MODELS", "")),
     )
 
 
@@ -64,44 +80,52 @@ def _parse_keys(raw: str) -> tuple[str, ...]:
     return tuple(k.strip() for k in raw.split(",") if k.strip())
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     providers: Iterable[ProviderConfig] = (
-        _provider(
-            "NVIDIA",
-            name="nvidia",
-            default_base_url="https://integrate.api.nvidia.com/v1",
-            priority=10,
-        ),
-        _provider(
-            "GEMINI",
-            name="gemini",
-            default_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            priority=20,
-        ),
-        _provider(
-            "GROQ",
-            name="groq",
-            default_base_url="https://api.groq.com/openai/v1",
-            priority=30,
-        ),
-        _provider(
-            "OPENROUTER",
-            name="openrouter",
-            default_base_url="https://openrouter.ai/api/v1",
-            priority=40,
-        ),
-        _provider(
-            "OPENAI",
-            name="openai",
-            default_base_url="https://api.openai.com/v1",
-            priority=50,
-        ),
+        _provider("NVIDIA", name="nvidia", default_base_url="https://integrate.api.nvidia.com/v1", priority=10),
+        _provider("GEMINI", name="gemini", default_base_url="https://generativelanguage.googleapis.com/v1beta/openai", priority=20),
+        _provider("GROQ", name="groq", default_base_url="https://api.groq.com/openai/v1", priority=30),
+        _provider("OPENROUTER", name="openrouter", default_base_url="https://openrouter.ai/api/v1", priority=40),
+        _provider("OPENAI", name="openai", default_base_url="https://api.openai.com/v1", priority=50),
     )
-    return Settings(
+    environment = os.getenv("ENVIRONMENT", "development").strip().lower()
+    settings = Settings(
         app_name=os.getenv("APP_NAME", "ARJUNA AI"),
-        public_origin=os.getenv("PUBLIC_ORIGIN", "http://localhost:8080"),
+        environment=environment,
+        public_origin=os.getenv("PUBLIC_ORIGIN", "http://localhost:8080").rstrip("/"),
         request_timeout_seconds=_int("REQUEST_TIMEOUT_SECONDS", 90),
         provider_failure_cooldown_seconds=_int("PROVIDER_FAILURE_COOLDOWN_SECONDS", 60),
         platform_api_keys=_parse_keys(os.getenv("PLATFORM_API_KEYS", "dev-local-key")),
         providers=tuple(providers),
+        session_secret=os.getenv("SESSION_SECRET", "dev-session-secret-change-me"),
+        admin_email=os.getenv("ADMIN_EMAIL", "admin@arjuna.local").strip().lower(),
+        admin_password=os.getenv("ADMIN_PASSWORD", "change-me-now"),
+        cookie_secure=_bool("COOKIE_SECURE", environment == "production"),
+        database_url=os.getenv("DATABASE_URL", "sqlite:///./data/arjuna.db"),
+        api_key_hash_secret=os.getenv("API_KEY_HASH_SECRET", "dev-key-hash-secret-change-me"),
+        rate_limit_per_minute=max(1, _int("RATE_LIMIT_PER_MINUTE", 60)),
+        login_rate_limit_per_minute=max(1, _int("LOGIN_RATE_LIMIT_PER_MINUTE", 8)),
+        allow_paid_routes=_bool("ALLOW_PAID_ROUTES", False),
+        provider_vault_secret=os.getenv("PROVIDER_VAULT_SECRET", "dev-provider-vault-secret-change-me"),
     )
+    if environment == "production":
+        insecure = []
+        documented_placeholders = {
+            "replace-with-a-long-random-password",
+            "replace-with-at-least-32-random-characters",
+            "replace-with-a-long-random-key",
+        }
+        if settings.session_secret.startswith("dev-") or len(settings.session_secret) < 32 or settings.session_secret in documented_placeholders:
+            insecure.append("SESSION_SECRET")
+        if settings.api_key_hash_secret.startswith("dev-") or len(settings.api_key_hash_secret) < 32 or settings.api_key_hash_secret in documented_placeholders:
+            insecure.append("API_KEY_HASH_SECRET")
+        if settings.admin_password == "change-me-now" or len(settings.admin_password) < 12 or settings.admin_password in documented_placeholders:
+            insecure.append("ADMIN_PASSWORD")
+        if not settings.platform_api_keys or any(k == "dev-local-key" or k in documented_placeholders for k in settings.platform_api_keys):
+            insecure.append("PLATFORM_API_KEYS")
+        if settings.provider_vault_secret.startswith("dev-") or len(settings.provider_vault_secret) < 32 or settings.provider_vault_secret in documented_placeholders:
+            insecure.append("PROVIDER_VAULT_SECRET")
+        if insecure:
+            raise RuntimeError("Unsafe production configuration: " + ", ".join(insecure))
+    return settings

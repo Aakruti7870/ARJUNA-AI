@@ -30,40 +30,28 @@ class OpenAICompatibleProvider:
         self.settings = settings
 
     async def chat(self, payload: dict[str, Any], model: str) -> ProviderAttempt:
-        body = {
-            "model": model,
-            "messages": payload["messages"],
-            "stream": False,
-        }
-        for field in ("temperature", "max_tokens"):
-            if payload.get(field) is not None:
-                body[field] = payload[field]
-
+        body = {k: v for k, v in payload.items() if v is not None and k not in {"provider", "free_only"}}
+        body["model"] = model
+        body["stream"] = False
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "arjuna-ai/0.1",
+            "User-Agent": "arjuna-ai/0.2",
         }
+        if self.config.name == "openrouter":
+            headers["HTTP-Referer"] = self.settings.public_origin
+            headers["X-Title"] = self.settings.app_name
         started = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.config.base_url}/chat/completions",
-                    headers=headers,
-                    json=body,
-                )
+                response = await client.post(f"{self.config.base_url}/chat/completions", headers=headers, json=body)
         except httpx.HTTPError as exc:
             raise ProviderError(self.config.name, f"Network error: {exc}") from exc
-
         latency_ms = int((time.perf_counter() - started) * 1000)
         if response.status_code >= 400:
-            detail = response.text[:1000]
-            raise ProviderError(self.config.name, detail, response.status_code)
-
-        data = response.json()
-        return ProviderAttempt(
-            provider=self.config.name,
-            model=model,
-            latency_ms=latency_ms,
-            response=data,
-        )
+            raise ProviderError(self.config.name, response.text[:1000], response.status_code)
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise ProviderError(self.config.name, "Provider returned invalid JSON") from exc
+        return ProviderAttempt(provider=self.config.name, model=model, latency_ms=latency_ms, response=data)
