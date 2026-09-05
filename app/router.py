@@ -16,8 +16,9 @@ class FailureState:
 
 
 class ModelRouter:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, provider_loader=None):
         self.settings = settings
+        self._provider_loader = provider_loader or (lambda: settings.providers)
         self._failures: dict[str, FailureState] = {}
         self._lock = asyncio.Lock()
 
@@ -43,7 +44,7 @@ class ModelRouter:
         return selected == candidate.default_model
 
     def candidates(self, *, provider: str | None, free_only: bool, model: str = "auto") -> list[ProviderConfig]:
-        candidates = [p for p in self.settings.providers if p.configured]
+        candidates = [p for p in self._provider_loader() if p.configured]
         if provider:
             candidates = [p for p in candidates if p.name == provider]
         candidates = [p for p in candidates if self._model_allowed(p, model, free_only)]
@@ -77,7 +78,7 @@ class ModelRouter:
 
     def public_status(self) -> list[dict[str, Any]]:
         output = []
-        for p in sorted(self.settings.providers, key=lambda item: item.priority):
+        for p in sorted(self._provider_loader(), key=lambda item: item.priority):
             failure = self._failures.get(p.name)
             output.append(
                 {
@@ -86,9 +87,16 @@ class ModelRouter:
                     "enabled": p.enabled,
                     "freeEligible": p.free_eligible,
                     "defaultModel": p.default_model or None,
+                    "baseUrl": p.base_url,
+                    "allowedModels": list(p.allowed_models),
+                    "freeModels": list(p.free_models),
                     "priority": p.priority,
                     "cooldown": self._in_cooldown(p.name),
                     "lastError": failure.reason[:240] if failure else None,
                 }
             )
         return output
+
+    async def clear_failure(self, provider: str) -> None:
+        async with self._lock:
+            self._failures.pop(provider, None)
