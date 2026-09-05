@@ -111,15 +111,20 @@ def get_settings() -> Settings:
     )
     if environment == "production":
         insecure = []
-        if settings.session_secret.startswith("dev-") or len(settings.session_secret) < 32:
+        documented_placeholders = {
+            "replace-with-a-long-random-password",
+            "replace-with-at-least-32-random-characters",
+            "replace-with-a-long-random-key",
+        }
+        if settings.session_secret.startswith("dev-") or len(settings.session_secret) < 32 or settings.session_secret in documented_placeholders:
             insecure.append("SESSION_SECRET")
-        if settings.api_key_hash_secret.startswith("dev-") or len(settings.api_key_hash_secret) < 32:
+        if settings.api_key_hash_secret.startswith("dev-") or len(settings.api_key_hash_secret) < 32 or settings.api_key_hash_secret in documented_placeholders:
             insecure.append("API_KEY_HASH_SECRET")
-        if settings.admin_password == "change-me-now" or len(settings.admin_password) < 12:
+        if settings.admin_password == "change-me-now" or len(settings.admin_password) < 12 or settings.admin_password in documented_placeholders:
             insecure.append("ADMIN_PASSWORD")
-        if "dev-local-key" in settings.platform_api_keys:
+        if not settings.platform_api_keys or any(k == "dev-local-key" or k in documented_placeholders for k in settings.platform_api_keys):
             insecure.append("PLATFORM_API_KEYS")
-        if settings.provider_vault_secret.startswith("dev-") or len(settings.provider_vault_secret) < 32:
+        if settings.provider_vault_secret.startswith("dev-") or len(settings.provider_vault_secret) < 32 or settings.provider_vault_secret in documented_placeholders:
             insecure.append("PROVIDER_VAULT_SECRET")
         if insecure:
             raise RuntimeError("Unsafe production configuration: " + ", ".join(insecure))
