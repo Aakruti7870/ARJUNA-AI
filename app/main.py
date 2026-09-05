@@ -33,7 +33,7 @@ sessions = SessionManager(settings.session_secret)
 api_limiter = SlidingWindowLimiter(settings.rate_limit_per_minute)
 login_limiter = SlidingWindowLimiter(settings.login_rate_limit_per_minute)
 
-app = FastAPI(title=settings.app_name, version="0.4.0", docs_url=None if settings.environment == "production" else "/api/docs", redoc_url=None)
+app = FastAPI(title=settings.app_name, version="0.5.0", docs_url=None if settings.environment == "production" else "/api/docs", redoc_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.public_origin],
@@ -71,8 +71,10 @@ async def runtime_error_handler(_: Request, exc: RuntimeError):
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    return (forwarded.split(",", 1)[0].strip() if forwarded else (request.client.host if request.client else "unknown"))
+    # Do not trust client-supplied X-Forwarded-For for the application limiter.
+    # Production edge/WAF rate limits should run before ARJUNA; this local guard
+    # uses the socket peer so callers cannot rotate spoofed forwarded addresses.
+    return request.client.host if request.client else "unknown"
 
 
 def _session(arjuna_session: str | None = Cookie(default=None)) -> SessionData:
@@ -177,7 +179,7 @@ async def manifest(): return FileResponse(STATIC_DIR / "manifest.webmanifest", m
 async def service_worker(): return FileResponse(STATIC_DIR / "service-worker.js", media_type="application/javascript")
 
 @app.get("/api/health")
-async def health(): return {"ok": True, "service": settings.app_name, "version": "0.4.0", "environment": settings.environment}
+async def health(): return {"ok": True, "service": settings.app_name, "version": "0.5.0", "environment": settings.environment}
 
 
 @app.get("/api/auth/status")
