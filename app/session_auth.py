@@ -114,5 +114,14 @@ def require_session(authorization: str | None = Header(default=None)) -> Session
     return resolve_session_token(authorization[7:].strip())
 
 
+def get_preview(preview_id: str) -> str | None:
+    _clean_expired()
+    for session in _sessions.values():
+        preview = session.previews.get(preview_id)
+        if preview is not None:
+            return preview
+    return None
+
+
 def session_ttl_seconds() -> int:
     return _SESSION_TTL_SECONDS
