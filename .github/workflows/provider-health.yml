@@ -3,6 +3,9 @@ name: AI Provider Health Check
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   check-providers:
     runs-on: ubuntu-latest
@@ -10,12 +13,13 @@ jobs:
     steps:
       - name: Check OpenAI
         env:
-          OPENAI_API_KEY: ${{ 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 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+          set -euo pipefail
+          test -n "$OPENAI_API_KEY" || { echo "OPENAI=SECRET_MISSING"; exit 1; }
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
             https://api.openai.com/v1/models \
             -H "Authorization: Bearer $OPENAI_API_KEY")
-
           if [ "$CODE" = "200" ]; then
             echo "OPENAI=CONNECTED"
           else
@@ -25,13 +29,15 @@ jobs:
 
       - name: Check NVIDIA
         env:
-          NVIDIA_API_KEY: ${{ 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 }}
-          NVIDIA_BASE_URL: ${{ https://integrate.api.nvidia.com/v1 }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_BASE_URL: ${{ secrets.NVIDIA_BASE_URL }}
         run: |
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "$NVIDIA_BASE_URL/models" \
+          set -euo pipefail
+          test -n "$NVIDIA_API_KEY" || { echo "NVIDIA=SECRET_MISSING"; exit 1; }
+          BASE_URL="${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}"
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "$BASE_URL/models" \
             -H "Authorization: Bearer $NVIDIA_API_KEY")
-
           if [ "$CODE" = "200" ]; then
             echo "NVIDIA=CONNECTED"
           else
@@ -41,21 +47,13 @@ jobs:
 
       - name: Check Amazon Bedrock
         env:
-          AWS_BEARER_TOKEN_BEDROCK: ${{ ABSKTWFudGxlQXBpS2V5LWlucGdrbW13LWF0LTY5NDQ2MzgzMjczMzpmNTJPTENtZjFscm5qa0ZjdlhDMDZLbGZWbEFyTGY2R1N6dmtCbExzL21MMGNZSlZGbHNXbzFaUFE2Yz0= }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-sonnet-4-6/converse" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
-            -d '{
-              "messages":[
-                {
-                  "role":"user",
-                  "content":[{"text":"Reply only OK"}]
-                }
-              ]
-            }')
-
+          set -euo pipefail
+          test -n "$AWS_BEARER_TOKEN_BEDROCK" || { echo "BEDROCK=SECRET_MISSING"; exit 1; }
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/models" \
+            -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK")
           if [ "$CODE" = "200" ]; then
             echo "BEDROCK=CONNECTED"
           else
