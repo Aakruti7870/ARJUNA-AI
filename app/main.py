@@ -6,19 +6,33 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .auth import require_platform_key
 from .config import ProviderConfig, get_settings
+from .orchestrator import (
+    PROVIDER_CATALOG,
+    catalog_payload,
+    execute_build,
+    provider_config,
+    rank_routes,
+)
 from .providers import OpenAICompatibleProvider, ProviderError
+from .session_auth import (
+    SessionData,
+    create_guest_session,
+    get_preview,
+    require_session,
+    session_ttl_seconds,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="ARJUNA AI",
-    version="0.2.0",
+    version="0.3.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -29,7 +43,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
     expose_headers=["X-Arjuna-Provider", "X-Arjuna-Model", "X-Arjuna-Latency-Ms"],
 )
@@ -45,6 +59,27 @@ class ChatRequest(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1, le=131072)
 
 
+class GuestRequest(BaseModel):
+    display_name: str = Field(default="Creator", max_length=80)
+
+
+class ProviderConnectRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=40)
+    api_key: str = Field(min_length=8, max_length=4096)
+    model: str = Field(min_length=1, max_length=200)
+    free_eligible: bool | None = None
+
+
+class RouterRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=30000)
+    free_only: bool = False
+
+
+class BuildRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=30000)
+    free_only: bool = False
+
+
 def _security_headers(response: Response) -> None:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -52,9 +87,19 @@ def _security_headers(response: Response) -> None:
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     response.headers[
         "Content-Security-Policy"
-    ] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     if settings.public_origin.startswith("https://"):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+
+def _preview_security_headers(response: Response) -> None:
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers[
+        "Content-Security-Policy"
+    ] = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
 
 
 @app.middleware("http")
@@ -70,8 +115,11 @@ async def protect_requests(request: Request, call_next):
             pass
 
     response = await call_next(request)
-    _security_headers(response)
-    if request.url.path.startswith("/v1/"):
+    if request.url.path.startswith("/api/previews/"):
+        _preview_security_headers(response)
+    else:
+        _security_headers(response)
+    if request.url.path.startswith(("/v1/", "/api/")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -163,6 +211,101 @@ async def readyz() -> JSONResponse:
     )
 
 
+# Browser product flow: free session -> BYOK -> smart route -> build -> sandbox preview.
+@app.post("/api/auth/guest")
+async def guest_login(payload: GuestRequest) -> dict[str, Any]:
+    token, session = create_guest_session(payload.display_name)
+    return {
+        "token": token,
+        "expires_in": session_ttl_seconds(),
+        "user": {"name": session.display_name, "mode": "free_guest"},
+    }
+
+
+@app.get("/api/session")
+async def session_info(session: SessionData = Depends(require_session)) -> dict[str, Any]:
+    return {
+        "user": {"name": session.display_name, "mode": "free_guest"},
+        "expires_at": session.expires_at,
+        "connected_providers": len(session.providers),
+    }
+
+
+@app.get("/api/providers")
+async def browser_providers(session: SessionData = Depends(require_session)) -> dict[str, Any]:
+    return {"data": catalog_payload(session)}
+
+
+@app.post("/api/providers/connect")
+async def connect_provider(
+    payload: ProviderConnectRequest,
+    session: SessionData = Depends(require_session),
+) -> dict[str, Any]:
+    try:
+        config = provider_config(
+            payload.provider,
+            payload.api_key,
+            payload.model,
+            payload.free_eligible,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session.providers[config.name] = config
+    meta = PROVIDER_CATALOG[config.name]
+    return {
+        "provider": config.name,
+        "label": meta.label,
+        "connected": True,
+        "model": config.default_model,
+        "free_eligible": config.free_eligible,
+        "credential_storage": "server_session_memory",
+    }
+
+
+@app.delete("/api/providers/{provider_name}")
+async def disconnect_provider(
+    provider_name: str,
+    session: SessionData = Depends(require_session),
+) -> dict[str, Any]:
+    name = provider_name.strip().lower()
+    removed = session.providers.pop(name, None)
+    return {"provider": name, "connected": False, "removed": removed is not None}
+
+
+@app.post("/api/router/recommend")
+async def recommend_route(
+    payload: RouterRequest,
+    session: SessionData = Depends(require_session),
+) -> dict[str, Any]:
+    routes = rank_routes(session, payload.prompt, payload.free_only)
+    return {
+        "recommended": routes[0] if routes else None,
+        "routes": routes[:6],
+        "requires_provider": not bool(routes),
+    }
+
+
+@app.post("/api/build")
+async def build_project(
+    payload: BuildRequest,
+    session: SessionData = Depends(require_session),
+) -> dict[str, Any]:
+    try:
+        return await execute_build(session, settings, payload.prompt, payload.free_only)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/previews/{preview_id}", response_class=HTMLResponse)
+async def preview(preview_id: str) -> HTMLResponse:
+    preview_html = get_preview(preview_id)
+    if preview_html is None:
+        raise HTTPException(status_code=404, detail="Preview not found or expired")
+    return HTMLResponse(preview_html)
+
+
+# OpenAI-compatible platform API for server-to-server clients.
 @app.get("/v1/models", dependencies=[Depends(require_platform_key)])
 async def models() -> dict[str, Any]:
     providers = [
@@ -187,8 +330,8 @@ async def chat_completions(payload: ChatRequest, response: Response) -> dict[str
         )
 
     request_payload = payload.model_dump()
-    for provider_config, model in candidates:
-        provider = OpenAICompatibleProvider(provider_config, settings)
+    for provider_config_item, model in candidates:
+        provider = OpenAICompatibleProvider(provider_config_item, settings)
         try:
             attempt = await provider.chat(request_payload, model)
             response.headers["X-Arjuna-Provider"] = attempt.provider
@@ -196,7 +339,7 @@ async def chat_completions(payload: ChatRequest, response: Response) -> dict[str
             response.headers["X-Arjuna-Latency-Ms"] = str(attempt.latency_ms)
             return attempt.response
         except ProviderError:
-            _provider_cooldowns[provider_config.name] = (
+            _provider_cooldowns[provider_config_item.name] = (
                 time.monotonic() + settings.provider_failure_cooldown_seconds
             )
 
