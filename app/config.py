@@ -23,6 +23,10 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _csv(raw: str) -> tuple[str, ...]:
+    return tuple(value.strip() for value in raw.split(",") if value.strip())
+
+
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
@@ -41,11 +45,18 @@ class ProviderConfig:
 @dataclass(frozen=True)
 class Settings:
     app_name: str
+    environment: str
     public_origin: str
+    cors_origins: tuple[str, ...]
+    max_request_bytes: int
     request_timeout_seconds: int
     provider_failure_cooldown_seconds: int
     platform_api_keys: tuple[str, ...]
     providers: tuple[ProviderConfig, ...]
+
+    @property
+    def production(self) -> bool:
+        return self.environment.lower() == "production"
 
 
 def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -> ProviderConfig:
@@ -58,10 +69,6 @@ def _provider(prefix: str, *, name: str, default_base_url: str, priority: int) -
         free_eligible=_bool(f"{prefix}_FREE_ELIGIBLE", False),
         enabled=_bool(f"{prefix}_ENABLED", True),
     )
-
-
-def _parse_keys(raw: str) -> tuple[str, ...]:
-    return tuple(k.strip() for k in raw.split(",") if k.strip())
 
 
 def get_settings() -> Settings:
@@ -97,11 +104,18 @@ def get_settings() -> Settings:
             priority=50,
         ),
     )
+
+    public_origin = os.getenv("PUBLIC_ORIGIN", "http://localhost:8080").rstrip("/")
+    configured_cors = _csv(os.getenv("CORS_ORIGINS", ""))
+
     return Settings(
         app_name=os.getenv("APP_NAME", "ARJUNA AI"),
-        public_origin=os.getenv("PUBLIC_ORIGIN", "http://localhost:8080"),
-        request_timeout_seconds=_int("REQUEST_TIMEOUT_SECONDS", 90),
-        provider_failure_cooldown_seconds=_int("PROVIDER_FAILURE_COOLDOWN_SECONDS", 60),
-        platform_api_keys=_parse_keys(os.getenv("PLATFORM_API_KEYS", "dev-local-key")),
+        environment=os.getenv("APP_ENV", "development"),
+        public_origin=public_origin,
+        cors_origins=configured_cors or (public_origin,),
+        max_request_bytes=max(1024, _int("MAX_REQUEST_BYTES", 1_048_576)),
+        request_timeout_seconds=max(1, _int("REQUEST_TIMEOUT_SECONDS", 90)),
+        provider_failure_cooldown_seconds=max(1, _int("PROVIDER_FAILURE_COOLDOWN_SECONDS", 60)),
+        platform_api_keys=_csv(os.getenv("PLATFORM_API_KEYS", "dev-local-key")),
         providers=tuple(providers),
     )
