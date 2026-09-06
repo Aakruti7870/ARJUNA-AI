@@ -19,7 +19,7 @@ from .orchestrator import (
     rank_routes,
     validate_provider_config,
 )
-from .providers import OpenAICompatibleProvider, ProviderError
+from .providers import OpenAIProvider, ProviderError, provider_for
 from .session_auth import (
     SessionData,
     create_guest_session,
@@ -66,9 +66,13 @@ class GuestRequest(BaseModel):
 
 class ProviderConnectRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=40)
-    api_key: str = Field(min_length=8, max_length=4096)
+    api_key: str = Field(default="", max_length=4096)
     model: str = Field(default="", max_length=200)
     free_eligible: bool | None = None
+
+
+class ProviderModelsRequest(BaseModel):
+    api_key: str = Field(default="", max_length=4096)
 
 
 class RouterRequest(BaseModel):
@@ -237,15 +241,69 @@ async def browser_providers(session: SessionData = Depends(require_session)) -> 
     return {"data": catalog_payload(session)}
 
 
+def _openai_config(api_key: str) -> ProviderConfig:
+    server = next((item for item in settings.providers if item.name == "openai"), None)
+    if not server:
+        raise HTTPException(status_code=400, detail="OpenAI is not configured")
+    key = api_key.strip() or (server.api_key if server.enabled else "")
+    if not key:
+        raise HTTPException(status_code=400, detail="Enter an OpenAI API key.")
+    return ProviderConfig(
+        name="openai", base_url=server.base_url, api_key=key,
+        default_model=server.default_model, priority=server.priority,
+        free_eligible=False, enabled=True,
+    )
+
+
+def _openai_model_rank(model_id: str) -> tuple[int, str]:
+    value = model_id.lower()
+    preferred = value.startswith(("gpt-5", "o3", "o4", "gpt-4.1", "gpt-4o"))
+    excluded = any(token in value for token in ("embedding", "moderation", "transcribe", "tts", "image", "whisper", "audio", "realtime"))
+    return (0 if preferred and not excluded else 1 if not excluded else 2, value)
+
+
+@app.post("/api/providers/openai/models")
+async def openai_models(
+    payload: ProviderModelsRequest,
+    session: SessionData = Depends(require_session),
+) -> dict[str, Any]:
+    config = _openai_config(payload.api_key)
+    try:
+        models = await OpenAIProvider(config, settings).models()
+    except ProviderError as exc:
+        if exc.status_code == 401:
+            detail = "OpenAI rejected this API key."
+        elif exc.status_code == 403:
+            detail = "OpenAI API access is not permitted for this key/project."
+        elif exc.status_code == 429:
+            detail = "OpenAI rate limit or quota was exceeded. Check project billing and limits."
+        else:
+            detail = "Could not fetch models from OpenAI. Try again shortly."
+        raise HTTPException(status_code=exc.status_code or 502, detail=detail) from exc
+    safe = [
+        {"id": item["id"], "created": item.get("created"), "owned_by": item.get("owned_by")}
+        for item in sorted(models, key=lambda item: _openai_model_rank(item["id"]))
+    ]
+    ids = {item["id"] for item in safe}
+    configured = config.default_model if config.default_model in ids else ""
+    selected = configured or (safe[0]["id"] if safe else "")
+    return {"data": safe, "selected": selected, "configured_model_available": bool(configured)}
+
+
 @app.post("/api/providers/connect")
 async def connect_provider(
     payload: ProviderConnectRequest,
     session: SessionData = Depends(require_session),
 ) -> dict[str, Any]:
     try:
+        api_key = payload.api_key
+        if payload.provider.strip().lower() == "openai" and not api_key.strip():
+            api_key = _openai_config("").api_key
+        elif len(api_key.strip()) < 8:
+            raise ValueError("API key is required")
         requested_config = provider_config(
             payload.provider,
-            payload.api_key,
+            api_key,
             payload.model,
             payload.free_eligible,
         )
@@ -337,7 +395,7 @@ async def chat_completions(payload: ChatRequest, response: Response) -> dict[str
 
     request_payload = payload.model_dump()
     for provider_config_item, model in candidates:
-        provider = OpenAICompatibleProvider(provider_config_item, settings)
+        provider = provider_for(provider_config_item, settings)
         try:
             attempt = await provider.chat(request_payload, model)
             response.headers["X-Arjuna-Provider"] = attempt.provider

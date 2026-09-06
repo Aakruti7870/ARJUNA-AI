@@ -1,8 +1,12 @@
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.config import ProviderConfig, get_settings
 from app.orchestrator import PROVIDER_CATALOG, _recovery_candidates, provider_config
+from app.providers import OpenAIProvider, provider_for
 
 
 client = TestClient(app)
@@ -182,3 +186,55 @@ def test_readiness_rejects_default_development_key():
     response = client.get("/readyz")
     assert response.status_code == 503
     assert "platform_api_key_not_production_safe" in response.json()["checks"]
+
+
+def test_openai_is_paid_only_even_if_browser_claims_free():
+    config = provider_config("openai", "sk-test-secret-123456", "gpt-5.6-luna", True)
+    assert config.free_eligible is False
+
+
+def test_native_openai_adapter_uses_models_and_responses_without_legacy_fields(monkeypatch):
+    requests = []
+
+    class Response:
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class Client:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def get(self, url, **kwargs):
+            requests.append(("GET", url, kwargs))
+            return Response({"data": [{"id": "gpt-5.6-luna"}]})
+
+        async def post(self, url, **kwargs):
+            requests.append(("POST", url, kwargs))
+            return Response({"id": "resp_1", "model": "gpt-5.6-luna", "output_text": "OK"})
+
+    monkeypatch.setattr("app.providers.httpx.AsyncClient", Client)
+    config = ProviderConfig("openai", "https://api.openai.com/v1", "sk-secret", "gpt-5.6-luna", 50, False, True)
+    adapter = provider_for(config, get_settings())
+    assert isinstance(adapter, OpenAIProvider)
+    assert [item["id"] for item in asyncio.run(adapter.models())] == ["gpt-5.6-luna"]
+    asyncio.run(adapter.validate("gpt-5.6-luna"))
+    method, url, options = requests[-1]
+    assert method == "POST" and url.endswith("/responses")
+    assert options["json"] == {
+        "model": "gpt-5.6-luna",
+        "input": [{"role": "user", "content": "Reply exactly OK"}],
+        "max_output_tokens": 16,
+    }
+    assert "temperature" not in options["json"]
+    assert "max_tokens" not in options["json"]

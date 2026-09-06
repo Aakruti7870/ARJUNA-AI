@@ -67,6 +67,8 @@ def create_guest_session(display_name: str) -> tuple[str, SessionData]:
     expires_at = now + _SESSION_TTL_SECONDS
     clean_name = (display_name or "Creator").strip()[:80] or "Creator"
     session = SessionData(session_id=session_id, display_name=clean_name, expires_at=expires_at)
+    # Copy server routes into this session. BYOK can replace only this private copy.
+    session.providers.update({p.name: p for p in get_settings().providers if p.configured})
     _sessions[session_id] = session
 
     payload = _b64encode(

@@ -175,9 +175,17 @@
       <input id="providerName" type="hidden">
       <label for="providerKey">API key</label>
       <input id="providerKey" type="password" autocomplete="off" required placeholder="Paste provider API key">
-      <label for="providerModel">Model ID</label>
-      <input id="providerModel" autocomplete="off" required placeholder="Enter the exact model ID enabled for this key">
-      <label class="toggle-row dialog-toggle" for="providerFree">
+      <button id="fetchModelsButton" class="secondary-button hidden" type="button">VALIDATE / FETCH MODELS</button>
+      <div id="modelSelectGroup" class="hidden">
+        <label for="providerModelSelect">Available model</label>
+        <select id="providerModelSelect"></select>
+      </div>
+      <details id="manualModelGroup">
+        <summary>Advanced: enter a model ID manually</summary>
+        <label for="providerModel">Model ID</label>
+        <input id="providerModel" autocomplete="off" required placeholder="Enter the exact model ID enabled for this key">
+      </details>
+      <label id="providerFreeGroup" class="toggle-row dialog-toggle" for="providerFree">
         <input id="providerFree" type="checkbox">
         <span><strong>Mark this route as free-eligible</strong><small>ARJUNA can prioritize it when Free routes only is enabled.</small></span>
       </label>

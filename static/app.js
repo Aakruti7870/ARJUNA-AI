@@ -23,7 +23,12 @@ const providerDialogTitle = $('providerDialogTitle');
 const providerName = $('providerName');
 const providerKey = $('providerKey');
 const providerModel = $('providerModel');
+const providerModelSelect = $('providerModelSelect');
+const modelSelectGroup = $('modelSelectGroup');
+const manualModelGroup = $('manualModelGroup');
+const fetchModelsButton = $('fetchModelsButton');
 const providerFree = $('providerFree');
+const providerFreeGroup = $('providerFreeGroup');
 const providerFormStatus = $('providerFormStatus');
 const closeProviderDialog = $('closeProviderDialog');
 const saveProviderButton = $('saveProviderButton');
@@ -198,10 +203,54 @@ function openProviderDialog(provider) {
   providerDialogTitle.textContent = provider.label;
   providerKey.value = '';
   providerModel.value = provider.model || provider.suggested_model || '';
-  providerFree.checked = Boolean(provider.free_eligible);
+  const isOpenAI = provider.provider === 'openai';
+  providerFree.checked = isOpenAI ? false : Boolean(provider.free_eligible);
+  providerFree.disabled = isOpenAI;
+  providerFreeGroup.classList.toggle('hidden', isOpenAI);
+  fetchModelsButton.classList.toggle('hidden', !isOpenAI);
+  modelSelectGroup.classList.add('hidden');
+  manualModelGroup.classList.toggle('hidden', isOpenAI);
+  providerModel.required = !isOpenAI;
   setStatus(providerFormStatus, provider.key_hint || 'ARJUNA validates the key and model before connecting.');
   providerDialog.showModal();
   setTimeout(() => providerKey.focus(), 30);
+}
+
+async function fetchOpenAIModels() {
+  const key = providerKey.value.trim();
+  if (!key) {
+    setStatus(providerFormStatus, 'Enter an OpenAI API key first.', 'error');
+    return;
+  }
+  fetchModelsButton.disabled = true;
+  fetchModelsButton.textContent = 'FETCHING…';
+  setStatus(providerFormStatus, 'Validating the key and fetching models from OpenAI…');
+  try {
+    const result = await api('/api/providers/openai/models', {
+      method: 'POST', body: JSON.stringify({ api_key: key }),
+    });
+    providerModelSelect.replaceChildren();
+    (result.data || []).forEach((model) => {
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.id;
+      option.selected = model.id === result.selected;
+      providerModelSelect.append(option);
+    });
+    if (!providerModelSelect.options.length) throw new Error('No OpenAI models are available to this project.');
+    providerModel.value = providerModelSelect.value;
+    modelSelectGroup.classList.remove('hidden');
+    manualModelGroup.classList.add('hidden');
+    setStatus(providerFormStatus,
+      result.configured_model_available
+        ? 'OpenAI key validated. Choose a model.'
+        : `OpenAI key validated. Selected available model ${result.selected}.`, 'success');
+  } catch (error) {
+    setStatus(providerFormStatus, error.message || 'Could not fetch OpenAI models.', 'error');
+  } finally {
+    fetchModelsButton.disabled = false;
+    fetchModelsButton.textContent = 'VALIDATE / FETCH MODELS';
+  }
 }
 
 async function connectProvider(event) {
@@ -217,8 +266,9 @@ async function connectProvider(event) {
       body: JSON.stringify({
         provider: providerName.value,
         api_key: providerKey.value.trim(),
-        model: providerModel.value.trim(),
-        free_eligible: providerFree.checked,
+        model: state.currentProvider.provider === 'openai' && !modelSelectGroup.classList.contains('hidden')
+          ? providerModelSelect.value : providerModel.value.trim(),
+        free_eligible: state.currentProvider.provider === 'openai' ? false : providerFree.checked,
       }),
     });
     providerKey.value = '';
@@ -400,6 +450,7 @@ displayName.addEventListener('keydown', (event) => {
 });
 logoutButton.addEventListener('click', clearSession);
 providerForm.addEventListener('submit', connectProvider);
+fetchModelsButton.addEventListener('click', fetchOpenAIModels);
 closeProviderDialog.addEventListener('click', () => {
   providerKey.value = '';
   providerDialog.close();
