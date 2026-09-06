@@ -1,9 +1,19 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.orchestrator import PROVIDER_CATALOG, _recovery_candidates, provider_config
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def stub_live_provider_validation(monkeypatch):
+    async def _validated(config, settings):
+        return config
+
+    monkeypatch.setattr("app.main.validate_provider_config", _validated)
 
 
 def _guest_headers(name: str = "Tester") -> dict[str, str]:
@@ -58,6 +68,32 @@ def test_provider_catalog_requires_session():
     assert response.status_code == 401
 
 
+def test_provider_catalog_guides_nvidia_kimi_key_source():
+    headers = _guest_headers("Catalog Test")
+    response = client.get("/api/providers", headers=headers)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    nvidia = next(item for item in data if item["provider"] == "nvidia")
+    kimi = next(item for item in data if item["provider"] == "kimi")
+    assert nvidia["suggested_model"] == "moonshotai/kimi-k2.5"
+    assert "NVIDIA API key" in nvidia["key_hint"]
+    assert kimi["suggested_model"] == "kimi-k2.5"
+    assert "Moonshot/Kimi Platform API key" in kimi["key_hint"]
+
+
+def test_nvidia_recovery_candidates_include_known_models():
+    config = provider_config(
+        "nvidia",
+        "nvapi-test-secret-123456789",
+        "wrong-model",
+        True,
+    )
+    models = [candidate.default_model for candidate in _recovery_candidates(config)]
+    assert models[0] == "wrong-model"
+    assert "moonshotai/kimi-k2.5" in models
+    assert "meta/llama-3.3-70b-instruct" in models
+
+
 def test_connect_multiple_provider_key_without_echoing_secret():
     headers = _guest_headers()
     secret = "nvapi-test-secret-123456789"
@@ -74,6 +110,7 @@ def test_connect_multiple_provider_key_without_echoing_secret():
     assert connect.status_code == 200
     assert secret not in connect.text
     assert connect.json()["connected"] is True
+    assert connect.json()["validated"] is True
     assert connect.json()["credential_storage"] == "server_session_memory"
 
     catalog = client.get("/api/providers", headers=headers)
@@ -86,7 +123,7 @@ def test_connect_multiple_provider_key_without_echoing_secret():
 
 def test_smart_router_recommends_connected_provider_without_calling_it():
     headers = _guest_headers("Router Test")
-    client.post(
+    connect = client.post(
         "/api/providers/connect",
         headers=headers,
         json={
@@ -96,6 +133,7 @@ def test_smart_router_recommends_connected_provider_without_calling_it():
             "free_eligible": True,
         },
     )
+    assert connect.status_code == 200
     response = client.post(
         "/api/router/recommend",
         headers=headers,
@@ -110,7 +148,7 @@ def test_smart_router_recommends_connected_provider_without_calling_it():
 
 def test_disconnect_provider():
     headers = _guest_headers("Disconnect Test")
-    client.post(
+    connect = client.post(
         "/api/providers/connect",
         headers=headers,
         json={
@@ -120,6 +158,7 @@ def test_disconnect_provider():
             "free_eligible": True,
         },
     )
+    assert connect.status_code == 200
     response = client.delete("/api/providers/gemini", headers=headers)
     assert response.status_code == 200
     assert response.json()["removed"] is True
