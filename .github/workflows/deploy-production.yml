@@ -1,0 +1,96 @@
+name: Deploy ARJUNA AI Production
+
+on:
+  workflow_run:
+    workflows: ["ARJUNA AI CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: arjuna-ai-production
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: asia-south1
+  CLOUD_RUN_SERVICE: arjuna-ai
+  PUBLIC_ORIGIN: https://gold-etechapp.com
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Check production configuration
+        shell: bash
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          test -n "$GCP_PROJECT_ID" || { echo 'Missing repository variable GCP_PROJECT_ID' >&2; exit 1; }
+          test -n "$WIF_PROVIDER" || { echo 'Missing secret GCP_WIF_PROVIDER' >&2; exit 1; }
+          test -n "$DEPLOY_SERVICE_ACCOUNT" || { echo 'Missing secret GCP_DEPLOY_SERVICE_ACCOUNT' >&2; exit 1; }
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Deploy Cloud Run service
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --source . \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --allow-unauthenticated \
+            --quiet \
+            --update-env-vars '^@^APP_ENV=production@PUBLIC_ORIGIN=https://gold-etechapp.com@CORS_ORIGINS=https://gold-etechapp.com,https://www.gold-etechapp.com@REQUEST_TIMEOUT_SECONDS=55@MAX_REQUEST_BYTES=1048576@PROVIDER_FAILURE_COOLDOWN_SECONDS=60'
+
+      - name: Verify Cloud Run health
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVICE_URL=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format='value(status.url)')
+          test -n "$SERVICE_URL"
+          curl --fail --silent --show-error "$SERVICE_URL/healthz"
+
+      - name: Deploy Firebase Hosting front door
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@latest deploy \
+            --only hosting \
+            --project "$GCP_PROJECT_ID" \
+            --non-interactive
+
+      - name: Verify public domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 6 --retry-delay 5 --retry-all-errors \
+            --fail --silent --show-error \
+            "$PUBLIC_ORIGIN/healthz"
