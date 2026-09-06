@@ -17,6 +17,7 @@ from .orchestrator import (
     execute_build,
     provider_config,
     rank_routes,
+    validate_provider_config,
 )
 from .providers import OpenAICompatibleProvider, ProviderError
 from .session_auth import (
@@ -32,7 +33,7 @@ STATIC_DIR = BASE_DIR / "static"
 
 app = FastAPI(
     title="ARJUNA AI",
-    version="0.3.0",
+    version="0.3.1",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -66,7 +67,7 @@ class GuestRequest(BaseModel):
 class ProviderConnectRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=40)
     api_key: str = Field(min_length=8, max_length=4096)
-    model: str = Field(min_length=1, max_length=200)
+    model: str = Field(default="", max_length=200)
     free_eligible: bool | None = None
 
 
@@ -242,13 +243,16 @@ async def connect_provider(
     session: SessionData = Depends(require_session),
 ) -> dict[str, Any]:
     try:
-        config = provider_config(
+        requested_config = provider_config(
             payload.provider,
             payload.api_key,
             payload.model,
             payload.free_eligible,
         )
+        config = await validate_provider_config(requested_config, settings)
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     session.providers[config.name] = config
@@ -257,7 +261,9 @@ async def connect_provider(
         "provider": config.name,
         "label": meta.label,
         "connected": True,
+        "validated": True,
         "model": config.default_model,
+        "model_recovered": config.default_model != requested_config.default_model,
         "free_eligible": config.free_eligible,
         "credential_storage": "server_session_memory",
     }
