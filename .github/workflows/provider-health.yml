@@ -12,51 +12,69 @@ jobs:
 
     steps:
       - name: Check OpenAI
+        id: openai
+        continue-on-error: true
         env:
-          OPENAI_API_KEY: ${{ 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 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          set -euo pipefail
-          test -n "$OPENAI_API_KEY" || { echo "OPENAI=SECRET_MISSING"; exit 1; }
+          set -u
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI=SECRET_MISSING"
+            exit 1
+          fi
           CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
             https://api.openai.com/v1/models \
             -H "Authorization: Bearer $OPENAI_API_KEY")
-          if [ "$CODE" = "200" ]; then
-            echo "OPENAI=CONNECTED"
-          else
-            echo "OPENAI=FAILED HTTP_$CODE"
-            exit 1
-          fi
+          echo "OPENAI_HTTP=$CODE"
+          test "$CODE" = "200"
 
       - name: Check NVIDIA
+        id: nvidia
+        continue-on-error: true
         env:
-          NVIDIA_API_KEY: ${{ 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 }}
-          NVIDIA_BASE_URL: ${{ https://integrate.api.nvidia.com/v1 }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_BASE_URL: ${{ secrets.NVIDIA_BASE_URL }}
         run: |
-          set -euo pipefail
-          test -n "$NVIDIA_API_KEY" || { echo "NVIDIA=SECRET_MISSING"; exit 1; }
+          set -u
+          if [ -z "${NVIDIA_API_KEY:-}" ]; then
+            echo "NVIDIA=SECRET_MISSING"
+            exit 1
+          fi
           BASE_URL="${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}"
           CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
             "$BASE_URL/models" \
             -H "Authorization: Bearer $NVIDIA_API_KEY")
-          if [ "$CODE" = "200" ]; then
-            echo "NVIDIA=CONNECTED"
-          else
-            echo "NVIDIA=FAILED HTTP_$CODE"
-            exit 1
-          fi
+          echo "NVIDIA_HTTP=$CODE"
+          test "$CODE" = "200"
 
       - name: Check Amazon Bedrock
+        id: bedrock
+        continue-on-error: true
         env:
-          AWS_BEARER_TOKEN_BEDROCK: ${{ ABSKTWFudGxlQXBpS2V5LWlucGdrbW13LWF0LTY5NDQ2MzgzMjczMzpmNTJPTENtZjFscm5qa0ZjdlhDMDZLbGZWbEFyTGY2R1N6dmtCbExzL21MMGNZSlZGbHNXbzFaUFE2Yz0= }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
         run: |
-          set -euo pipefail
-          test -n "$AWS_BEARER_TOKEN_BEDROCK" || { echo "BEDROCK=SECRET_MISSING"; exit 1; }
+          set -u
+          if [ -z "${AWS_BEARER_TOKEN_BEDROCK:-}" ]; then
+            echo "BEDROCK=SECRET_MISSING"
+            exit 1
+          fi
           CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
             "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/models" \
             -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK")
-          if [ "$CODE" = "200" ]; then
-            echo "BEDROCK=CONNECTED"
-          else
-            echo "BEDROCK=FAILED HTTP_$CODE"
+          echo "BEDROCK_HTTP=$CODE"
+          test "$CODE" = "200"
+
+      - name: Provider health summary
+        env:
+          OPENAI_RESULT: ${{ steps.openai.outcome }}
+          NVIDIA_RESULT: ${{ steps.nvidia.outcome }}
+          BEDROCK_RESULT: ${{ steps.bedrock.outcome }}
+        run: |
+          echo "OpenAI: $OPENAI_RESULT"
+          echo "NVIDIA: $NVIDIA_RESULT"
+          echo "Bedrock: $BEDROCK_RESULT"
+          if [ "$OPENAI_RESULT" != "success" ] || \
+             [ "$NVIDIA_RESULT" != "success" ] || \
+             [ "$BEDROCK_RESULT" != "success" ]; then
             exit 1
           fi
