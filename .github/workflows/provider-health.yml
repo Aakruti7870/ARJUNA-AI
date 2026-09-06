@@ -1,0 +1,64 @@
+name: AI Provider Health Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-providers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check OpenAI
+        env:
+          OPENAI_API_KEY: ${{ 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 }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://api.openai.com/v1/models \
+            -H "Authorization: Bearer $OPENAI_API_KEY")
+
+          if [ "$CODE" = "200" ]; then
+            echo "OPENAI=CONNECTED"
+          else
+            echo "OPENAI=FAILED HTTP_$CODE"
+            exit 1
+          fi
+
+      - name: Check NVIDIA
+        env:
+          NVIDIA_API_KEY: ${{ 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 }}
+          NVIDIA_BASE_URL: ${{ https://integrate.api.nvidia.com/v1 }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$NVIDIA_BASE_URL/models" \
+            -H "Authorization: Bearer $NVIDIA_API_KEY")
+
+          if [ "$CODE" = "200" ]; then
+            echo "NVIDIA=CONNECTED"
+          else
+            echo "NVIDIA=FAILED HTTP_$CODE"
+            exit 1
+          fi
+
+      - name: Check Amazon Bedrock
+        env:
+          AWS_BEARER_TOKEN_BEDROCK: ${{ ABSKTWFudGxlQXBpS2V5LWlucGdrbW13LWF0LTY5NDQ2MzgzMjczMzpmNTJPTENtZjFscm5qa0ZjdlhDMDZLbGZWbEFyTGY2R1N6dmtCbExzL21MMGNZSlZGbHNXbzFaUFE2Yz0= }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-sonnet-4-6/converse" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" \
+            -d '{
+              "messages":[
+                {
+                  "role":"user",
+                  "content":[{"text":"Reply only OK"}]
+                }
+              ]
+            }')
+
+          if [ "$CODE" = "200" ]; then
+            echo "BEDROCK=CONNECTED"
+          else
+            echo "BEDROCK=FAILED HTTP_$CODE"
+            exit 1
+          fi
