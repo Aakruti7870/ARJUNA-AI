@@ -3,76 +3,190 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#17120c">
-  <meta name="description" content="ARJUNA AI — independent multi-model AI command centre and playground.">
+  <meta name="theme-color" content="#08111d">
+  <meta name="description" content="ARJUNA AI — connect multiple AI providers, enter one prompt, automatically choose the best route, and see a live preview.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
-  <title>ARJUNA AI</title>
+  <title>ARJUNA AI — Build with the best AI</title>
 </head>
 <body>
-  <div class="shell">
+  <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="ARJUNA AI home">
-        <span class="mark" aria-hidden="true">➶</span>
-        <span>ARJUNA AI</span>
+        <span class="brand-mark">➶</span>
+        <span class="brand-copy"><strong>ARJUNA AI</strong><small>GOLD-e Tech</small></span>
       </a>
-      <span class="domain">gold-etechapp.com</span>
+      <div class="top-actions">
+        <span class="health-pill"><span id="healthDot" class="status-dot"></span><span id="healthText">Connecting…</span></span>
+        <button id="logoutButton" class="ghost-button compact hidden" type="button">Logout</button>
+      </div>
     </header>
 
     <main>
-      <section class="hero">
-        <div class="eyebrow">INDEPENDENT AI COMMAND CENTRE</div>
-        <h1>One gateway.<br><span>Multiple AI models.</span></h1>
-        <p>Route requests across your configured providers without exposing provider API keys to the browser.</p>
-        <div class="status-row">
-          <span id="healthDot" class="dot"></span>
-          <span id="healthText">Checking service…</span>
+      <section id="authView" class="auth-view">
+        <div class="auth-hero">
+          <div class="eyebrow">ONE PLATFORM · MULTIPLE AI · LIVE BUILD</div>
+          <h1>Turn one idea into a <span>real app.</span></h1>
+          <p>Connect your own AI API keys. ARJUNA analyses your prompt, chooses the best available model, falls back automatically when needed, and renders the result in a live sandbox.</p>
+          <div class="flow-line" aria-label="ARJUNA workflow">
+            <span>Login</span><b>→</b><span>API Keys</span><b>→</b><span>Prompt</span><b>→</b><span>Best AI</span><b>→</b><span>Live Preview</span>
+          </div>
+        </div>
+
+        <div class="login-card glass-card">
+          <div class="step-badge">1</div>
+          <h2>Start free</h2>
+          <p class="muted">No credit card. No paid authentication provider required.</p>
+          <label for="displayName">Your name</label>
+          <input id="displayName" maxlength="80" autocomplete="name" placeholder="Krushna">
+          <button id="startFreeButton" class="primary-button" type="button">CONTINUE FREE →</button>
+          <div class="auth-note">
+            <strong>Free session auth</strong>
+            <span>Your session is signed by the ARJUNA server and expires automatically.</span>
+          </div>
         </div>
       </section>
 
-      <section class="workspace" aria-label="ARJUNA AI playground">
-        <div class="panel controls">
-          <div class="panel-title">PLAYGROUND</div>
-
-          <label for="platformKey">Platform API key</label>
-          <input id="platformKey" type="password" autocomplete="off" placeholder="Enter your ARJUNA platform key">
-
-          <div class="two-col">
-            <div>
-              <label for="model">Model route</label>
-              <input id="model" value="auto" autocomplete="off" aria-describedby="modelHelp">
-              <small id="modelHelp">Use auto, provider:model, or a model name.</small>
-            </div>
-            <div class="check-wrap">
-              <label class="check-label" for="freeOnly">
-                <input id="freeOnly" type="checkbox" checked>
-                <span>Free-eligible routes only</span>
-              </label>
-            </div>
+      <section id="workspaceView" class="workspace-view hidden">
+        <div class="workspace-head">
+          <div>
+            <div class="eyebrow">ARJUNA COMMAND CENTRE</div>
+            <h2 id="welcomeText">Build with the best available AI</h2>
           </div>
-
-          <label for="prompt">Prompt</label>
-          <textarea id="prompt" rows="8" placeholder="Ask ARJUNA AI anything…"></textarea>
-
-          <button id="sendButton" type="button">SEND TO ARJUNA</button>
-          <p class="security-note">Provider credentials remain server-side. This page never receives them.</p>
+          <div class="session-chip"><span>FREE SESSION</span><strong id="connectedCount">0 providers</strong></div>
         </div>
 
-        <div class="panel output-panel">
-          <div class="output-head">
-            <div class="panel-title">PREVIEW</div>
-            <div id="routeMeta" class="route-meta">No request yet</div>
-          </div>
-          <pre id="output" aria-live="polite">ARJUNA AI is ready for a prompt.</pre>
+        <nav class="stepper" aria-label="Build flow">
+          <div class="step done"><b>1</b><span>Login<small>Session ready</small></span></div>
+          <div id="providerStep" class="step active"><b>2</b><span>API Keys<small>Connect providers</small></span></div>
+          <div id="promptStep" class="step"><b>3</b><span>Prompt<small>Describe the goal</small></span></div>
+          <div id="routerStep" class="step"><b>4</b><span>Smart AI<small>Best route wins</small></span></div>
+          <div id="previewStep" class="step"><b>5</b><span>Live Preview<small>See it instantly</small></span></div>
+        </nav>
+
+        <div class="product-grid">
+          <section class="panel provider-panel">
+            <div class="panel-head">
+              <div>
+                <span class="panel-kicker">STEP 2</span>
+                <h3>Connect AI Providers</h3>
+              </div>
+              <span class="secure-tag">SESSION VAULT</span>
+            </div>
+            <p class="muted small-copy">Add several keys so ARJUNA can compare routes and fall back automatically. Keys are sent to the server and are never saved in browser storage.</p>
+            <div id="providerList" class="provider-list" aria-live="polite"></div>
+          </section>
+
+          <section class="panel prompt-panel">
+            <div class="panel-head">
+              <div>
+                <span class="panel-kicker">STEP 3</span>
+                <h3>What should ARJUNA build?</h3>
+              </div>
+              <span id="taskTypeBadge" class="task-badge">Waiting</span>
+            </div>
+
+            <textarea id="promptInput" rows="10" placeholder="Example: Build a premium CRM dashboard with login, customer cards, analytics, search and a responsive mobile layout."></textarea>
+
+            <div class="prompt-options">
+              <label class="toggle-row" for="freeOnly">
+                <input id="freeOnly" type="checkbox">
+                <span><strong>Free routes only</strong><small>Skip providers you marked as paid.</small></span>
+              </label>
+              <button id="recommendButton" class="secondary-button" type="button">FIND BEST AI</button>
+            </div>
+
+            <div class="router-card">
+              <div class="router-icon">◎</div>
+              <div class="router-copy">
+                <span class="panel-kicker">STEP 4 · SMART ROUTER</span>
+                <strong id="recommendedTitle">Connect a provider to begin</strong>
+                <small id="recommendedMeta">ARJUNA scores task fit, free eligibility and routing priority.</small>
+              </div>
+              <div id="routeScore" class="route-score">—</div>
+            </div>
+
+            <div id="routeAlternatives" class="route-alternatives"></div>
+            <button id="buildButton" class="primary-button build-button" type="button" disabled>BUILD WITH ARJUNA →</button>
+            <p id="buildStatus" class="build-status">Connect at least one provider and enter a prompt.</p>
+          </section>
+
+          <section class="panel preview-panel">
+            <div class="panel-head preview-head">
+              <div>
+                <span class="panel-kicker">STEP 5</span>
+                <h3>Live Preview</h3>
+              </div>
+              <div class="preview-tabs" role="tablist">
+                <button class="tab active" data-tab="preview" type="button">Preview</button>
+                <button class="tab" data-tab="code" type="button">Code</button>
+                <button class="tab" data-tab="result" type="button">Result</button>
+              </div>
+            </div>
+
+            <div id="previewPane" class="tab-pane active">
+              <div class="preview-toolbar">
+                <span class="browser-dots"><i></i><i></i><i></i></span>
+                <span id="previewTitle">ARJUNA preview</span>
+                <span id="routeMeta">No build yet</span>
+              </div>
+              <div class="iframe-wrap">
+                <iframe id="previewFrame" title="ARJUNA generated app preview" sandbox="allow-scripts"></iframe>
+                <div id="previewEmpty" class="preview-empty">
+                  <div class="preview-glyph">➶</div>
+                  <strong>Your live app appears here</strong>
+                  <span>Connect keys, enter a prompt, and let ARJUNA choose the best AI.</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="codePane" class="tab-pane">
+              <pre id="codeOutput">No generated HTML yet.</pre>
+            </div>
+
+            <div id="resultPane" class="tab-pane">
+              <div class="result-card">
+                <h4 id="resultTitle">No result yet</h4>
+                <p id="resultSummary">The selected AI route, latency and build notes will appear here.</p>
+                <ul id="resultNotes"></ul>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </main>
 
     <footer>
-      <span>ARJUNA AI</span>
+      <span>ARJUNA AI © 2026</span>
+      <span>Login → API Keys → Prompt → Smart AI → Live Preview</span>
       <span>Powered by GOLD-e Tech</span>
     </footer>
   </div>
+
+  <dialog id="providerDialog" class="provider-dialog">
+    <form id="providerForm" method="dialog">
+      <div class="dialog-head">
+        <div>
+          <span class="panel-kicker">CONNECT PROVIDER</span>
+          <h3 id="providerDialogTitle">AI Provider</h3>
+        </div>
+        <button id="closeProviderDialog" class="icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <input id="providerName" type="hidden">
+      <label for="providerKey">API key</label>
+      <input id="providerKey" type="password" autocomplete="off" required placeholder="Paste provider API key">
+      <label for="providerModel">Model ID</label>
+      <input id="providerModel" autocomplete="off" required placeholder="Enter the exact model ID enabled for this key">
+      <label class="toggle-row dialog-toggle" for="providerFree">
+        <input id="providerFree" type="checkbox">
+        <span><strong>Mark this route as free-eligible</strong><small>ARJUNA can prioritize it when Free routes only is enabled.</small></span>
+      </label>
+      <p class="vault-warning">The key is transmitted to ARJUNA over HTTPS and kept only in this server session. It is not written to GitHub or browser storage.</p>
+      <button id="saveProviderButton" class="primary-button" type="submit">CONNECT PROVIDER</button>
+      <p id="providerFormStatus" class="build-status"></p>
+    </form>
+  </dialog>
+
   <script src="/app.js" defer></script>
 </body>
 </html>
