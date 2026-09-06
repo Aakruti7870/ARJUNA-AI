@@ -25,14 +25,18 @@ services:
         value: "55"
       - key: PROVIDER_FAILURE_COOLDOWN_SECONDS
         value: "60"
+      - key: ARJUNA_SESSION_TTL_SECONDS
+        value: "43200"
 
-      # Enter a long random value during the first Blueprint setup.
+      # Production secrets are never committed to GitHub.
       - key: PLATFORM_API_KEYS
         sync: false
+      - key: ARJUNA_SESSION_SECRET
+        generateValue: true
 
-      # NVIDIA is the initial provider. Add other provider secrets later only when enabled.
+      # Global provider is optional for BYOK browser sessions, but can power server-to-server API traffic.
       - key: NVIDIA_ENABLED
-        value: "true"
+        value: "false"
       - key: NVIDIA_API_KEY
         sync: false
       - key: NVIDIA_MODEL
