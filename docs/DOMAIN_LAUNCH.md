@@ -1,122 +1,130 @@
 # ARJUNA AI production launch — gold-etechapp.com
 
-Target architecture:
+Production architecture:
 
 ```text
 https://gold-etechapp.com
         |
         v
-Firebase Hosting (SSL/CDN/custom domain)
+Render managed HTTPS / custom domain
         |
-        +-- static ARJUNA AI playground
+        v
+ARJUNA AI Docker Web Service
+Render region: Singapore
         |
-        +-- /v1/*, /healthz, /readyz
-               |
-               v
-        Cloud Run: arjuna-ai
-        Region: asia-south1
+        +-- static playground UI
+        +-- /healthz
+        +-- /readyz
+        +-- /v1/models
+        +-- /v1/chat/completions
+        |
+        v
+Configured AI providers
 ```
 
-This is intentionally used instead of direct Cloud Run domain mapping. Direct Cloud Run domain mapping is preview/limited and is not available in `asia-south1`; Firebase Hosting supports rewrites to Cloud Run in `asia-south1` and provides managed HTTPS/custom domains.
+No Google Cloud, Firebase, or Replit is required for this deployment.
 
-## 1. Google project prerequisites
+## Why Render
 
-Use one dedicated Google Cloud/Firebase project for ARJUNA AI. Do not reuse TrackMyRMC production resources.
+ARJUNA AI is already packaged as one Docker web service that serves both the frontend and API. Render can build that Dockerfile from GitHub, run it as a web service, attach `gold-etechapp.com`, perform HTTP health checks, issue/renew TLS certificates, and redeploy after GitHub checks pass.
 
-Enable billing and the services needed by Cloud Run, Cloud Build/Artifact Registry and Firebase Hosting.
+The Blueprint is committed at `/render.yaml`.
 
-Deploy service name:
+## Production compute
+
+The Blueprint uses:
 
 ```text
-arjuna-ai
+Region: Singapore
+Plan: 0.5c-512mb
 ```
 
-Region:
+This is intentionally a small paid always-on service. Do not use Render's free web-service plan for a public launch because free services spin down after inactivity and cold-start on the next request.
 
-```text
-asia-south1
-```
+## 1. Connect Render
 
-## 2. Provider secrets
-
-Do not commit real provider/API keys to GitHub or `.env` files.
-
-At minimum production needs:
-
-```text
-PLATFORM_API_KEYS=<long random ARJUNA platform key>
-```
-
-And at least one configured model provider with all of:
-
-```text
-<PROVIDER>_ENABLED=true
-<PROVIDER>_API_KEY=<secret>
-<PROVIDER>_MODEL=<current model id>
-<PROVIDER>_BASE_URL=<provider URL>
-<PROVIDER>_FREE_ELIGIBLE=true|false
-```
-
-Store provider keys using Google Secret Manager / Cloud Run secret bindings. Non-secret model IDs and routing priorities may be normal Cloud Run environment variables.
-
-The production readiness endpoint intentionally returns HTTP 503 until the platform key is production-safe and at least one provider is fully configured.
-
-## 3. GitHub Workload Identity Federation
-
-Production deploy uses short-lived Google credentials. Do not add a JSON service-account key to the repository.
-
-Create a Google Workload Identity Federation provider restricted to this GitHub repository:
+Use the Render integration in ChatGPT or sign in to Render and connect the GitHub repository:
 
 ```text
 Aakruti7870/ARJUNA-AI
 ```
 
-Add these GitHub repository settings:
+Create a **Blueprint** from the repository's `render.yaml`.
 
-Repository variable:
-
-```text
-GCP_PROJECT_ID=<your ARJUNA Google Cloud/Firebase project id>
-```
-
-Repository secrets:
+The service name is:
 
 ```text
-GCP_WIF_PROVIDER=<projects/.../workloadIdentityPools/.../providers/...>
-GCP_DEPLOY_SERVICE_ACCOUNT=<deploy-service-account@PROJECT_ID.iam.gserviceaccount.com>
+arjuna-ai
 ```
 
-The deploy identity needs only the permissions required to deploy Cloud Run from source and deploy Firebase Hosting. Keep runtime provider secrets separate from the deploy identity.
+## 2. Required secrets
 
-## 4. First deployment
+The Blueprint will request secret values marked `sync: false`.
 
-After this branch is merged to `main`, CI runs first. Production deployment is triggered only after the main-branch CI workflow succeeds.
+Required ARJUNA credential:
 
-The deployment will:
+```text
+PLATFORM_API_KEYS=<long random platform key>
+```
 
-1. build/deploy the repository to Cloud Run as `arjuna-ai` in `asia-south1`;
-2. set the public runtime origin to `https://gold-etechapp.com`;
-3. verify the Cloud Run `/healthz` endpoint;
-4. deploy the Firebase Hosting config that serves the static UI and rewrites API traffic to Cloud Run.
+At least one model provider must also be configured. NVIDIA is enabled by default in the Blueprint, so the minimum provider configuration is:
 
-## 5. Connect gold-etechapp.com
+```text
+NVIDIA_API_KEY=<secret>
+NVIDIA_MODEL=<current NVIDIA NIM model id>
+```
 
-In the Firebase console for the ARJUNA project:
+The remaining providers are disabled by default and can be enabled later from Render environment variables.
 
-1. Open **Hosting**.
-2. Choose **Add custom domain**.
-3. Enter `gold-etechapp.com`.
-4. Complete domain ownership verification if requested.
-5. Firebase will display the exact DNS records required for the domain.
-6. Add exactly those records at the DNS provider for `gold-etechapp.com`.
-7. Do not guess or copy IP addresses from another project/domain.
-8. Wait until Firebase reports the domain as connected and the SSL certificate as active.
+Never commit real provider keys to GitHub.
 
-Add `www.gold-etechapp.com` separately and configure it to redirect to the apex domain if you want one canonical hostname.
+## 3. Deployment behavior
 
-## 6. Required production checks
+Render uses the repository Dockerfile and `/healthz` as the service health check.
 
-Run these after DNS/SSL is active:
+The Blueprint uses:
+
+```text
+autoDeployTrigger: checksPass
+```
+
+That means changes on `main` deploy only after the linked GitHub checks pass.
+
+The production runtime is configured with:
+
+```text
+APP_ENV=production
+PUBLIC_ORIGIN=https://gold-etechapp.com
+CORS_ORIGINS=https://gold-etechapp.com,https://www.gold-etechapp.com
+```
+
+## 4. Connect gold-etechapp.com
+
+The Blueprint declares:
+
+```text
+gold-etechapp.com
+```
+
+as the custom domain.
+
+After the Render service exists:
+
+1. Open the ARJUNA AI web service in Render.
+2. Open **Settings → Custom Domains**.
+3. Confirm `gold-etechapp.com` is present.
+4. Render will display the exact DNS record(s) required for the domain.
+5. Add exactly those records at the DNS provider that manages `gold-etechapp.com`.
+6. Remove conflicting old A/AAAA/CNAME records for the same host only when Render instructs you to replace them.
+7. Verify the domain in Render.
+
+Render automatically provisions and renews TLS and redirects HTTP traffic to HTTPS.
+
+For the apex domain, Render also handles the corresponding `www` hostname/redirect behavior when the root custom domain is added.
+
+## 5. Launch verification
+
+After deployment and DNS verification:
 
 ```bash
 curl -i https://gold-etechapp.com/healthz
@@ -128,11 +136,11 @@ Expected:
 
 ```text
 /healthz -> HTTP 200
-/readyz  -> HTTP 200 only when platform key + provider config are production-ready
-/         -> HTTP 200 with HTTPS/security headers
+/readyz  -> HTTP 200 only when the platform key and at least one provider are production-ready
+/         -> HTTP 200 over HTTPS
 ```
 
-Then test an authenticated request:
+Then verify an authenticated model call:
 
 ```bash
 curl https://gold-etechapp.com/v1/chat/completions \
@@ -145,7 +153,7 @@ curl https://gold-etechapp.com/v1/chat/completions \
   }'
 ```
 
-Confirm these response headers are present on a successful model call:
+A successful routed call should return:
 
 ```text
 X-Arjuna-Provider
@@ -153,8 +161,8 @@ X-Arjuna-Model
 X-Arjuna-Latency-Ms
 ```
 
-## 7. Public-launch boundary
+## Public-launch boundary
 
-This branch makes the gateway/domain deployment-ready, but the current authentication model is still a shared platform API key. That is suitable for a private/admin launch or controlled alpha.
+This deployment is suitable for the ARJUNA command centre and controlled/private users. The current gateway still uses a shared platform API key.
 
-Before opening ARJUNA AI as a public multi-user SaaS, add user accounts, per-user API keys, persistent quotas/rate limiting, abuse controls and billing/spend limits. Do not expose the shared production platform key in public frontend code.
+Before offering ARJUNA AI as an unrestricted multi-user public SaaS, add user accounts, per-user API keys, persistent quotas/rate limiting, abuse controls, audit logging, and billing/spend caps. Never embed the shared production platform key in public JavaScript.
