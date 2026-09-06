@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Check OpenAI
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ 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 }}
         run: |
           set -euo pipefail
           test -n "$OPENAI_API_KEY" || { echo "OPENAI=SECRET_MISSING"; exit 1; }
