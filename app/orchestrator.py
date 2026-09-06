@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from .config import ProviderConfig, Settings
-from .providers import OpenAICompatibleProvider, ProviderError
+from .providers import OpenAIProvider, ProviderError, provider_for
 from .session_auth import SessionData
 
 
@@ -97,7 +97,7 @@ def provider_config(provider: str, api_key: str, model: str, free_eligible: bool
     if not meta:
         raise ValueError("Unsupported provider")
     selected_model = model.strip() or meta.suggested_model
-    if not selected_model:
+    if not selected_model and name != "openai":
         raise ValueError("Model ID is required for this provider")
     return ProviderConfig(
         name=name,
@@ -105,7 +105,10 @@ def provider_config(provider: str, api_key: str, model: str, free_eligible: bool
         api_key=api_key.strip(),
         default_model=selected_model,
         priority=meta.priority,
-        free_eligible=meta.free_eligible if free_eligible is None else free_eligible,
+        # Paid-only providers cannot be promoted to a free route by browser state.
+        free_eligible=False if name == "openai" else (
+            meta.free_eligible if free_eligible is None else free_eligible
+        ),
         enabled=True,
     )
 
@@ -178,6 +181,16 @@ def _recovery_candidates(config: ProviderConfig) -> list[ProviderConfig]:
 
 def _friendly_validation_error(config: ProviderConfig, failures: list[tuple[ProviderConfig, ProviderError]]) -> str:
     statuses = [error.status_code for _, error in failures]
+    if config.name == "openai":
+        if any(status == 401 for status in statuses):
+            return "OpenAI rejected this API key."
+        if any(status == 403 for status in statuses):
+            return "OpenAI API access is not permitted for this key/project."
+        if any(status == 404 for status in statuses):
+            return "The selected model is unavailable for this OpenAI project. Fetch models and choose an available model."
+        if any(status == 429 for status in statuses):
+            return "OpenAI rate limit or quota was exceeded. Check project billing and limits."
+        return "OpenAI validation failed. Verify the project access and selected model."
     if config.name == "kimi" and any(status in (401, 403) for status in statuses):
         return (
             "Kimi/Moonshot authentication failed. Use a Moonshot/Kimi Platform API key. "
@@ -196,6 +209,20 @@ def _friendly_validation_error(config: ProviderConfig, failures: list[tuple[Prov
 
 
 async def validate_provider_config(config: ProviderConfig, settings: Settings) -> ProviderConfig:
+    if config.name == "openai":
+        provider = OpenAIProvider(config, settings)
+        try:
+            available = await provider.models()
+            model_ids = {item["id"] for item in available}
+            if config.default_model not in model_ids:
+                raise RuntimeError(
+                    "The selected model is unavailable for this OpenAI project. Fetch models and choose an available model."
+                )
+            await provider.validate(config.default_model)
+            return config
+        except ProviderError as exc:
+            raise RuntimeError(_friendly_validation_error(config, [(config, exc)])) from exc
+
     probe_payload = {
         "messages": [{"role": "user", "content": "Reply OK"}],
         "temperature": 0.0,
@@ -204,7 +231,7 @@ async def validate_provider_config(config: ProviderConfig, settings: Settings) -
     failures: list[tuple[ProviderConfig, ProviderError]] = []
 
     for candidate in _recovery_candidates(config):
-        provider = OpenAICompatibleProvider(candidate, settings)
+        provider = provider_for(candidate, settings)
         try:
             await provider.chat(probe_payload, candidate.default_model)
             return candidate
@@ -290,7 +317,7 @@ async def execute_build(
     for route in routes:
         original_config = session.providers[route["provider"]]
         for config in _recovery_candidates(original_config):
-            provider = OpenAICompatibleProvider(config, settings)
+            provider = provider_for(config, settings)
             try:
                 attempt = await provider.chat(request_payload, config.default_model)
             except ProviderError as exc:
