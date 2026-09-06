@@ -4,7 +4,7 @@ import html
 import json
 import re
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from .config import ProviderConfig, Settings
@@ -20,12 +20,16 @@ class ProviderMeta:
     priority: int
     free_eligible: bool
     capabilities: dict[str, int]
+    suggested_model: str = ""
+    key_hint: str = ""
 
 
 PROVIDER_CATALOG: dict[str, ProviderMeta] = {
     "nvidia": ProviderMeta(
         "nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", 10, True,
         {"coding": 92, "reasoning": 92, "vision": 80, "fast": 78, "general": 90},
+        suggested_model="moonshotai/kimi-k2.5",
+        key_hint="Use an NVIDIA API key. Kimi models hosted by NVIDIA must be connected under NVIDIA NIM.",
     ),
     "gemini": ProviderMeta(
         "gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", 20, True,
@@ -54,7 +58,19 @@ PROVIDER_CATALOG: dict[str, ProviderMeta] = {
     "kimi": ProviderMeta(
         "kimi", "Kimi / Moonshot", "https://api.moonshot.ai/v1", 80, False,
         {"coding": 92, "reasoning": 96, "vision": 72, "fast": 80, "general": 93},
+        suggested_model="kimi-k2.5",
+        key_hint="Use a Moonshot/Kimi Platform API key. An NVIDIA API key belongs under NVIDIA NIM instead.",
     ),
+}
+
+
+RECOVERY_MODELS: dict[str, tuple[str, ...]] = {
+    "nvidia": (
+        "moonshotai/kimi-k2.5",
+        "meta/llama-3.3-70b-instruct",
+        "openai/gpt-oss-20b",
+    ),
+    "kimi": ("kimi-k2.5",),
 }
 
 
@@ -66,6 +82,8 @@ def catalog_payload(session: SessionData | None = None) -> list[dict[str, Any]]:
             "label": meta.label,
             "connected": meta.name in connected,
             "model": connected[meta.name].default_model if meta.name in connected else "",
+            "suggested_model": meta.suggested_model,
+            "key_hint": meta.key_hint,
             "free_eligible": connected[meta.name].free_eligible if meta.name in connected else meta.free_eligible,
             "capabilities": meta.capabilities,
         }
@@ -78,11 +96,14 @@ def provider_config(provider: str, api_key: str, model: str, free_eligible: bool
     meta = PROVIDER_CATALOG.get(name)
     if not meta:
         raise ValueError("Unsupported provider")
+    selected_model = model.strip() or meta.suggested_model
+    if not selected_model:
+        raise ValueError("Model ID is required for this provider")
     return ProviderConfig(
         name=name,
         base_url=meta.base_url,
         api_key=api_key.strip(),
-        default_model=model.strip(),
+        default_model=selected_model,
         priority=meta.priority,
         free_eligible=meta.free_eligible if free_eligible is None else free_eligible,
         enabled=True,
@@ -128,6 +149,71 @@ def rank_routes(session: SessionData, prompt: str, free_only: bool) -> list[dict
         )
     routes.sort(key=lambda route: route["score"], reverse=True)
     return routes
+
+
+def _recovery_candidates(config: ProviderConfig) -> list[ProviderConfig]:
+    candidates: list[ProviderConfig] = [config]
+    alt_base_urls: tuple[str, ...] = ()
+    if config.name == "kimi":
+        alt_base_urls = ("https://api.moonshot.cn/v1",)
+        for base_url in alt_base_urls:
+            candidates.append(replace(config, base_url=base_url))
+
+    for model in RECOVERY_MODELS.get(config.name, ()):
+        if model == config.default_model:
+            continue
+        candidates.append(replace(config, default_model=model))
+        for base_url in alt_base_urls:
+            candidates.append(replace(config, default_model=model, base_url=base_url))
+
+    unique: list[ProviderConfig] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        identity = (candidate.base_url, candidate.default_model)
+        if identity not in seen:
+            seen.add(identity)
+            unique.append(candidate)
+    return unique
+
+
+def _friendly_validation_error(config: ProviderConfig, failures: list[tuple[ProviderConfig, ProviderError]]) -> str:
+    statuses = [error.status_code for _, error in failures]
+    if config.name == "kimi" and any(status in (401, 403) for status in statuses):
+        return (
+            "Kimi/Moonshot authentication failed. Use a Moonshot/Kimi Platform API key. "
+            "If this key came from NVIDIA, connect it under NVIDIA NIM and use model moonshotai/kimi-k2.5."
+        )
+    if config.name == "nvidia" and any(status in (401, 403) for status in statuses):
+        return "NVIDIA rejected this API key. Use an API key issued for NVIDIA Build/NIM."
+    if any(status == 404 for status in statuses):
+        suggestion = PROVIDER_CATALOG[config.name].suggested_model
+        suffix = f" Try model {suggestion}." if suggestion else ""
+        return f"The provider accepted the route but could not find that model ID.{suffix}"
+    if any(status == 429 for status in statuses):
+        return "The provider is rate-limited or out of quota. Try again later or connect another provider."
+    status_text = ", ".join(str(status or "network") for status in statuses[-3:]) or "unknown"
+    return f"Provider validation failed ({status_text}). Check the API key and model ID."
+
+
+async def validate_provider_config(config: ProviderConfig, settings: Settings) -> ProviderConfig:
+    probe_payload = {
+        "messages": [{"role": "user", "content": "Reply OK"}],
+        "temperature": 0.0,
+        "max_tokens": 1,
+    }
+    failures: list[tuple[ProviderConfig, ProviderError]] = []
+
+    for candidate in _recovery_candidates(config):
+        provider = OpenAICompatibleProvider(candidate, settings)
+        try:
+            await provider.chat(probe_payload, candidate.default_model)
+            return candidate
+        except ProviderError as exc:
+            failures.append((candidate, exc))
+            if exc.status_code in (401, 403) and config.name not in {"kimi"}:
+                break
+
+    raise RuntimeError(_friendly_validation_error(config, failures))
 
 
 def _extract_text(data: dict[str, Any]) -> str:
@@ -202,35 +288,41 @@ async def execute_build(
     }
 
     for route in routes:
-        config = session.providers[route["provider"]]
-        provider = OpenAICompatibleProvider(config, settings)
-        try:
-            attempt = await provider.chat(request_payload, config.default_model)
-        except ProviderError as exc:
-            failures.append(f"{config.name}:{exc.status_code or 'network'}")
-            continue
+        original_config = session.providers[route["provider"]]
+        for config in _recovery_candidates(original_config):
+            provider = OpenAICompatibleProvider(config, settings)
+            try:
+                attempt = await provider.chat(request_payload, config.default_model)
+            except ProviderError as exc:
+                failures.append(f"{config.name}:{config.default_model}:{exc.status_code or 'network'}")
+                if exc.status_code in (401, 403) and config.name != "kimi":
+                    break
+                continue
 
-        raw_text = _extract_text(attempt.response)
-        result = _parse_build_result(raw_text)
-        preview_html = str(result.get("html") or "")[:250000]
-        preview_id = secrets.token_urlsafe(24)
-        session.previews[preview_id] = preview_html
-        while len(session.previews) > 20:
-            session.previews.pop(next(iter(session.previews)))
+            if config != original_config:
+                session.providers[config.name] = config
 
-        return {
-            "provider": attempt.provider,
-            "model": attempt.model,
-            "latency_ms": attempt.latency_ms,
-            "task": task,
-            "score": route["score"],
-            "recommended_routes": routes[:4],
-            "fallbacks_before_success": failures,
-            "title": str(result.get("title") or "ARJUNA AI Result")[:200],
-            "summary": str(result.get("summary") or "")[:4000],
-            "notes": result.get("notes") if isinstance(result.get("notes"), list) else [],
-            "html": preview_html,
-            "preview_id": preview_id,
-        }
+            raw_text = _extract_text(attempt.response)
+            result = _parse_build_result(raw_text)
+            preview_html = str(result.get("html") or "")[:250000]
+            preview_id = secrets.token_urlsafe(24)
+            session.previews[preview_id] = preview_html
+            while len(session.previews) > 20:
+                session.previews.pop(next(iter(session.previews)))
 
-    raise RuntimeError("All connected AI providers failed: " + ", ".join(failures))
+            return {
+                "provider": attempt.provider,
+                "model": attempt.model,
+                "latency_ms": attempt.latency_ms,
+                "task": task,
+                "score": route["score"],
+                "recommended_routes": routes[:4],
+                "fallbacks_before_success": failures,
+                "title": str(result.get("title") or "ARJUNA AI Result")[:200],
+                "summary": str(result.get("summary") or "")[:4000],
+                "notes": result.get("notes") if isinstance(result.get("notes"), list) else [],
+                "html": preview_html,
+                "preview_id": preview_id,
+            }
+
+    raise RuntimeError("All connected AI providers failed: " + ", ".join(failures[-8:]))
