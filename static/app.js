@@ -197,9 +197,9 @@ function openProviderDialog(provider) {
   providerName.value = provider.provider;
   providerDialogTitle.textContent = provider.label;
   providerKey.value = '';
-  providerModel.value = provider.model || '';
+  providerModel.value = provider.model || provider.suggested_model || '';
   providerFree.checked = Boolean(provider.free_eligible);
-  setStatus(providerFormStatus, '');
+  setStatus(providerFormStatus, provider.key_hint || 'ARJUNA validates the key and model before connecting.');
   providerDialog.showModal();
   setTimeout(() => providerKey.focus(), 30);
 }
@@ -208,11 +208,11 @@ async function connectProvider(event) {
   event.preventDefault();
   if (!state.currentProvider) return;
   saveProviderButton.disabled = true;
-  saveProviderButton.textContent = 'CONNECTING…';
-  setStatus(providerFormStatus, 'Saving key to this server session…');
+  saveProviderButton.textContent = 'VALIDATING…';
+  setStatus(providerFormStatus, 'Validating API key and model with the provider…');
 
   try {
-    await api('/api/providers/connect', {
+    const result = await api('/api/providers/connect', {
       method: 'POST',
       body: JSON.stringify({
         provider: providerName.value,
@@ -222,12 +222,18 @@ async function connectProvider(event) {
       }),
     });
     providerKey.value = '';
-    setStatus(providerFormStatus, 'Provider connected.', 'success');
+    setStatus(
+      providerFormStatus,
+      result.model_recovered
+        ? `Connected. ARJUNA corrected the model route to ${result.model}.`
+        : `Provider validated and connected with ${result.model}.`,
+      'success',
+    );
     await loadProviders();
-    setTimeout(() => providerDialog.close(), 350);
+    setTimeout(() => providerDialog.close(), 650);
     if (promptInput.value.trim().length >= 3) await recommendRoute();
   } catch (error) {
-    setStatus(providerFormStatus, error.message || 'Could not connect provider.', 'error');
+    setStatus(providerFormStatus, error.message || 'Could not validate provider.', 'error');
   } finally {
     saveProviderButton.disabled = false;
     saveProviderButton.textContent = 'CONNECT PROVIDER';
