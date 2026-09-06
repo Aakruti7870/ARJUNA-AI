@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17120c">
+  <meta name="description" content="ARJUNA AI — independent multi-model AI command centre and playground.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <title>ARJUNA AI</title>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="ARJUNA AI home">
+        <span class="mark" aria-hidden="true">➶</span>
+        <span>ARJUNA AI</span>
+      </a>
+      <span class="domain">gold-etechapp.com</span>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">INDEPENDENT AI COMMAND CENTRE</div>
+        <h1>One gateway.<br><span>Multiple AI models.</span></h1>
+        <p>Route requests across your configured providers without exposing provider API keys to the browser.</p>
+        <div class="status-row">
+          <span id="healthDot" class="dot"></span>
+          <span id="healthText">Checking service…</span>
+        </div>
+      </section>
+
+      <section class="workspace" aria-label="ARJUNA AI playground">
+        <div class="panel controls">
+          <div class="panel-title">PLAYGROUND</div>
+
+          <label for="platformKey">Platform API key</label>
+          <input id="platformKey" type="password" autocomplete="off" placeholder="Enter your ARJUNA platform key">
+
+          <div class="two-col">
+            <div>
+              <label for="model">Model route</label>
+              <input id="model" value="auto" autocomplete="off" aria-describedby="modelHelp">
+              <small id="modelHelp">Use auto, provider:model, or a model name.</small>
+            </div>
+            <div class="check-wrap">
+              <label class="check-label" for="freeOnly">
+                <input id="freeOnly" type="checkbox" checked>
+                <span>Free-eligible routes only</span>
+              </label>
+            </div>
+          </div>
+
+          <label for="prompt">Prompt</label>
+          <textarea id="prompt" rows="8" placeholder="Ask ARJUNA AI anything…"></textarea>
+
+          <button id="sendButton" type="button">SEND TO ARJUNA</button>
+          <p class="security-note">Provider credentials remain server-side. This page never receives them.</p>
+        </div>
+
+        <div class="panel output-panel">
+          <div class="output-head">
+            <div class="panel-title">PREVIEW</div>
+            <div id="routeMeta" class="route-meta">No request yet</div>
+          </div>
+          <pre id="output" aria-live="polite">ARJUNA AI is ready for a prompt.</pre>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>ARJUNA AI</span>
+      <span>Powered by GOLD-e Tech</span>
+    </footer>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
