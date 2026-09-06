@@ -1,0 +1,25 @@
+name: Sync Render Production Branch
+
+on:
+  workflow_run:
+    workflows: ["ARJUNA AI CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Advance Render production branch
+        run: git push origin HEAD:refs/heads/launch/gold-etechapp-com --force
