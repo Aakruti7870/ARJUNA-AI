@@ -9,6 +9,8 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.production.example
+gha-creds-*.json
 
 # IDE / OS
 .DS_Store

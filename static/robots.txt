@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /v1/
+Disallow: /readyz
+
+Sitemap: https://gold-etechapp.com/sitemap.xml

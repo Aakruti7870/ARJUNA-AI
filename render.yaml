@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: arjuna-ai
+    runtime: docker
+    region: singapore
+    plan: 0.5c-512mb
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    domains:
+      - gold-etechapp.com
+    envVars:
+      - key: APP_NAME
+        value: ARJUNA AI
+      - key: APP_ENV
+        value: production
+      - key: PUBLIC_ORIGIN
+        value: https://gold-etechapp.com
+      - key: CORS_ORIGINS
+        value: https://gold-etechapp.com,https://www.gold-etechapp.com
+      - key: MAX_REQUEST_BYTES
+        value: "1048576"
+      - key: REQUEST_TIMEOUT_SECONDS
+        value: "55"
+      - key: PROVIDER_FAILURE_COOLDOWN_SECONDS
+        value: "60"
+
+      # Enter a long random value during the first Blueprint setup.
+      - key: PLATFORM_API_KEYS
+        sync: false
+
+      # NVIDIA is the initial provider. Add other provider secrets later only when enabled.
+      - key: NVIDIA_ENABLED
+        value: "true"
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_MODEL
+        sync: false
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NVIDIA_PRIORITY
+        value: "10"
+      - key: NVIDIA_FREE_ELIGIBLE
+        value: "true"
+
+      - key: GEMINI_ENABLED
+        value: "false"
+      - key: GROQ_ENABLED
+        value: "false"
+      - key: OPENROUTER_ENABLED
+        value: "false"
+      - key: OPENAI_ENABLED
+        value: "false"

@@ -1,0 +1,53 @@
+name: ARJUNA AI CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile Python
+        run: python -m compileall -q app
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build production container
+        run: docker build -t arjuna-ai:ci .
+
+      - name: Smoke test container
+        shell: bash
+        run: |
+          set -euo pipefail
+          CID=$(docker run -d -p 18080:8080 \
+            -e PLATFORM_API_KEYS=ci-platform-key-not-for-production \
+            arjuna-ai:ci)
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:18080/healthz >/dev/null; then
+              curl --fail --silent --show-error http://127.0.0.1:18080/ >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo 'Container failed to become healthy' >&2
+          exit 1
