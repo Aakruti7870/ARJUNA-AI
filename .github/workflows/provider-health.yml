@@ -29,8 +29,8 @@ jobs:
 
       - name: Check NVIDIA
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NVIDIA_BASE_URL: ${{ secrets.NVIDIA_BASE_URL }}
+          NVIDIA_API_KEY: ${{ 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 }}
+          NVIDIA_BASE_URL: ${{ https://integrate.api.nvidia.com/v1 }}
         run: |
           set -euo pipefail
           test -n "$NVIDIA_API_KEY" || { echo "NVIDIA=SECRET_MISSING"; exit 1; }
@@ -47,7 +47,7 @@ jobs:
 
       - name: Check Amazon Bedrock
         env:
-          AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          AWS_BEARER_TOKEN_BEDROCK: ${{ ABSKTWFudGxlQXBpS2V5LWlucGdrbW13LWF0LTY5NDQ2MzgzMjczMzpmNTJPTENtZjFscm5qa0ZjdlhDMDZLbGZWbEFyTGY2R1N6dmtCbExzL21MMGNZSlZGbHNXbzFaUFE2Yz0= }}
         run: |
           set -euo pipefail
           test -n "$AWS_BEARER_TOKEN_BEDROCK" || { echo "BEDROCK=SECRET_MISSING"; exit 1; }
