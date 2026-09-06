@@ -8,8 +8,9 @@ ARJUNA AI is a standalone self-hosted AI gateway and playground that sits in fro
 - provider/model registry;
 - playground UI with response preview, latency and usage;
 - provider cooldown after failures;
-- Docker + Google Cloud Run starter deployment;
-- no Replit dependency.
+- Docker deployment;
+- Render production Blueprint for `gold-etechapp.com`;
+- no Replit or Google Cloud dependency.
 
 ## Important limitation
 
@@ -47,7 +48,23 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
 Open `http://localhost:8080`.
 
-The development platform key in the UI defaults to `dev-local-key`. Change `PLATFORM_API_KEYS` before any shared or production deployment.
+The development platform key defaults to `dev-local-key`. Change `PLATFORM_API_KEYS` before any shared or production deployment.
+
+## Production launch
+
+Production is designed to run as one Docker web service on Render in Singapore. The committed `render.yaml` configures:
+
+- service name `arjuna-ai`;
+- Docker runtime;
+- `/healthz` health checks;
+- deploys only after GitHub checks pass;
+- canonical origin `https://gold-etechapp.com`;
+- custom domain `gold-etechapp.com`;
+- secret environment variables for ARJUNA/provider credentials.
+
+See `docs/DOMAIN_LAUNCH.md` for deployment and DNS instructions.
+
+Do not use Render's free web-service plan for a production launch because free services can spin down when idle.
 
 ## Provider setup
 
@@ -60,9 +77,9 @@ BASE_URL
 FREE_ELIGIBLE
 ```
 
-Examples are in `.env.example`.
+Examples are in `.env.example` and `.env.production.example`.
 
-The gateway intentionally does **not** hard-code model names. Model availability changes faster than the gateway architecture, so you choose a current model from your provider account.
+The gateway intentionally does **not** hard-code model names. Model availability changes faster than the gateway architecture, so choose a current model from your provider account.
 
 ## Call your own API
 
@@ -85,26 +102,25 @@ X-Arjuna-Model
 X-Arjuna-Latency-Ms
 ```
 
-## Production hardening before public launch
+## Production hardening before unrestricted public SaaS launch
 
-This is an MVP scaffold, not a finished public SaaS. Before public users are allowed, add:
+The current service is suitable for the ARJUNA command centre and controlled/private access. Before allowing unrestricted multi-user public access, add:
 
-1. Secret Manager instead of plain environment files.
-2. User accounts and per-user generated API keys stored as hashes.
-3. Persistent quota/usage database (PostgreSQL/Redis).
-4. Distributed rate limiting.
-5. Billing/spend caps and per-provider quota polling where supported.
-6. Audit logs without prompt/secret leakage.
-7. Streaming and tool-calling compatibility tests per provider.
-8. Abuse controls and content/safety policies appropriate to your service.
-9. Private Cloud Run ingress or a proper auth layer for the admin UI.
-10. Sandbox execution if you later add code/app preview generation.
+1. User accounts and per-user generated API keys stored as hashes.
+2. Persistent quota/usage database (PostgreSQL/Redis).
+3. Distributed rate limiting.
+4. Billing/spend caps and provider quota polling where supported.
+5. Audit logs without prompt/secret leakage.
+6. Streaming and tool-calling compatibility tests per provider.
+7. Abuse controls and content/safety policies appropriate to your service.
+8. An authenticated admin console.
+9. Sandbox execution if code/app preview generation is added.
 
 ## Next build phases
 
 ### Phase 2 — Secure ARJUNA AI Console
 - login and admin RBAC;
-- secure provider key management through Google Secret Manager;
+- secure provider key management;
 - model discovery and health checks;
 - usage dashboard and daily limits;
 - API-key issuance for your applications.
